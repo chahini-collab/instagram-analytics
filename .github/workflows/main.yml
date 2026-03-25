@@ -2,7 +2,7 @@ name: Atualizar Instagram
 
 on:
   schedule:
-    - cron: '0 * * * *'  # roda a cada 1 hora
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -13,20 +13,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Instalar R
+      - name: Setup R
         uses: r-lib/actions/setup-r@v2
 
-      - name: Instalar pacotes
-        run: |
-          Rscript -e 'install.packages(c("httr","jsonlite","openxlsx"), repos="https://cloud.r-project.org")'
+      - name: Install dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            httr
+            jsonlite
+            openxlsx
 
-      - name: Rodar script
+      - name: Run script
         env:
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
         run: |
           Rscript instagram_script.R
 
-      - name: Commit arquivo atualizado
+      - name: Commit updated file
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "actions@github.com"
