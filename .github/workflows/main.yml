@@ -1,0 +1,35 @@
+name: Atualizar Instagram
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # roda a cada 1 hora
+  workflow_dispatch:
+
+jobs:
+  run-script:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Instalar R
+        uses: r-lib/actions/setup-r@v2
+
+      - name: Instalar pacotes
+        run: |
+          Rscript -e 'install.packages(c("httr","jsonlite","openxlsx"))'
+
+      - name: Rodar script
+        env:
+          ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+        run: |
+          Rscript instagram_script.R
+
+      - name: Commit arquivo atualizado
+        run: |
+          git config --global user.name "github-actions"
+          git config --global user.email "actions@github.com"
+          git add instagram_posts.xlsx
+          git commit -m "Atualizando dados automaticamente" || echo "Sem mudanças"
+          git push
