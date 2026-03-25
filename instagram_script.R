@@ -2,7 +2,7 @@ library(httr)
 library(jsonlite)
 library(openxlsx)
 
-access_token <- "EAF1amHzzbzIBRKfRsNrfI6JGU8F6gpphSn9cgVtToHH1MCKx7tSh2L9ZBTHkxrZCYcdFo7VOhMjOwBklJLa4drZBGl3zhWN3ZCm8uMEbTI1sz316xmWJyQ6ZCHrKuHZB1lmtYSxz3CQjq1dm9nCpmXxtOtiAbDZCaP6X1CZAS7Didq5JLilYbFOiKGPvxFNeUlKADZBejUQ9t8aUawLuYfC1IEFzou5A6p2v4Rt6GF7OfYhu7VUv0KgZDZD"
+access_token <- Sys.getenv("ACCESS_TOKEN")
 ig_id <- "17841411701744440"
 
 url <- paste0(
