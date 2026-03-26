@@ -4,39 +4,44 @@ library(jsonlite)
 access_token <- Sys.getenv("ACCESS_TOKEN")
 ig_id <- "17841411701744440"
 
-url <- paste0(
+base_url <- paste0(
   "https://graph.facebook.com/v25.0/",
   ig_id,
-  "/media?fields=id,caption,media_type,media_url,timestamp,like_count,comments_count&access_token=",
+  "/media?fields=id,caption,media_type,media_url,timestamp,like_count,comments_count&limit=50&access_token=",
   access_token
 )
 
-# Requisição
-response <- GET(url)
+all_data <- list()
+next_url <- base_url
 
-# Verifica status HTTP
-if (status_code(response) != 200) {
-  stop(paste("Erro HTTP:", status_code(response)))
+while (!is.null(next_url)) {
+  
+  response <- GET(next_url)
+  
+  if (status_code(response) != 200) {
+    stop(paste("Erro HTTP:", status_code(response)))
+  }
+  
+  data <- content(response, "text", encoding = "UTF-8")
+  json_data <- fromJSON(data, flatten = TRUE)
+  
+  if (!is.null(json_data$error)) {
+    stop(paste("Erro da API:", json_data$error$message))
+  }
+  
+  all_data <- append(all_data, json_data$data)
+  
+  # próxima página
+  if (!is.null(json_data$paging$`next`)) {
+    next_url <- json_data$paging$`next`
+  } else {
+    next_url <- NULL
+  }
 }
 
-# Converte resposta
-data <- content(response, "text", encoding = "UTF-8")
-json_data <- fromJSON(data, flatten = TRUE)
+df <- do.call(rbind, all_data)
 
-# Verifica erro da API
-if (!is.null(json_data$error)) {
-  stop(paste("Erro da API:", json_data$error$message))
-}
-
-# Verifica se há dados
-if (is.null(json_data$data) || length(json_data$data) == 0) {
-  stop("Nenhum dado retornado pela API.")
-}
-
-# Dataframe
-df <- json_data$data
-
-# Exporta CSV (🔥 mudança principal)
+# 🔥 EXPORTA CSV (CORRETO PRO POWER BI)
 write.csv(df, "instagram_posts.csv", row.names = FALSE, fileEncoding = "UTF-8")
 
-print("Arquivo CSV gerado com sucesso!")
+print("Arquivo CSV atualizado com paginação completa!")
