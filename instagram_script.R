@@ -1,6 +1,5 @@
 library(httr)
 library(jsonlite)
-library(openxlsx)
 
 access_token <- Sys.getenv("ACCESS_TOKEN")
 ig_id <- "17841411701744440"
@@ -37,7 +36,7 @@ if (is.null(json_data$data) || length(json_data$data) == 0) {
 # Dataframe
 df <- json_data$data
 
-# Exporta Excel
-write.xlsx(df, "instagram_posts.xlsx", overwrite = TRUE)
+# Exporta CSV (🔥 mudança principal)
+write.csv(df, "instagram_posts.csv", row.names = FALSE, fileEncoding = "UTF-8")
 
-print("Arquivo gerado com sucesso!")
+print("Arquivo CSV gerado com sucesso!")
