@@ -1,103 +1,73 @@
-import requests
-import pandas as pd
-import datetime
-import os
+library(httr)
+library(jsonlite)
+library(openxlsx)
 
-# --- CONFIGURAÇÕES DO USUÁRIO ---
-ACCESS_TOKEN = 'EAAXokkudCowBRFJTmrgqfmc80sqO5BFt2LN4leEZB7xX6bkIIDS4Cro0e5BNWE6RrpZCrBpTODOLiegyCXUSZC97bWK1ZASmCRvvY6KFwfV98KF4GuIwr5g91uN8gizd5EBJSoOAhZC1gvzD5kxxQv10yIUtJekIizmfyI6HlFoHBSUTsoxkN2kYUT3kgCN02D7JHrqT7glZBJJFZAQW2AXE2C7SjzwJUUcCudL6TmVtP2RrK9YCv7T'  # Substitua pelo seu Token de Acesso
-INSTAGRAM_ACCOUNT_ID = '17841411707444440'  # Substitua pelo seu ID da conta do Instagram Business
-OUTPUT_FILE = 'instagram_analytics.csv'
+# 🔐 TOKEN via variável de ambiente (RECOMENDADO)
+access_token <- Sys.getenv("ACCESS_TOKEN")
 
-# --- CONFIGURAÇÕES DA API ---
-BASE_URL = 'https://graph.facebook.com/v19.0/'
+# 🆔 ID correto do Instagram
+ig_id <- "17841411707444440"
 
-def get_instagram_media():
-    """Busca todos os posts (media) da conta do Instagram."""
-    url = f"{BASE_URL}{INSTAGRAM_ACCOUNT_ID}/media"
-    params = {
-        'access_token': ACCESS_TOKEN,
-        'fields': 'id,caption,media_type,timestamp,permalink'
+base_url <- paste0("https://graph.facebook.com/v25.0/", ig_id, "/media")
+
+# 📦 Função para buscar TODOS os posts (com paginação)
+get_all_media <- function(url, token) {
+  all_data <- list()
+  
+  repeat {
+    response <- GET(
+      url,
+      query = list(
+        fields = "id,caption,media_type,media_url,timestamp,like_count,comments_count",
+        access_token = token
+      )
+    )
+    
+    if (status_code(response) != 200) {
+      stop(paste("Erro HTTP:", status_code(response), content(response, "text")))
     }
     
-    response = requests.get(url, params=params)
-    if response.status_code != 200:
-        print(f"Erro ao buscar media: {response.json()}")
-        return []
+    data <- content(response, "text", encoding = "UTF-8")
+    json_data <- fromJSON(data, flatten = TRUE)
     
-    return response.json().get('data', [])
-
-def get_media_insights(media_id, media_type):
-    """Busca métricas específicas de um post (media)."""
-    # Métricas variam dependendo do tipo de mídia (IMAGE, VIDEO, CAROUSEL_ALBUM)
-    metrics = 'impressions,reach,engagement,saved'
-    if media_type == 'VIDEO':
-        metrics += ',video_views'
-    
-    url = f"{BASE_URL}{media_id}/insights"
-    params = {
-        'access_token': ACCESS_TOKEN,
-        'metric': metrics
+    if (!is.null(json_data$error)) {
+      stop(paste("Erro da API:", json_data$error$message))
     }
     
-    response = requests.get(url, params=params)
-    if response.status_code != 200:
-        # Alguns posts antigos ou específicos podem não ter insights disponíveis
-        return {}
+    if (!is.null(json_data$data)) {
+      all_data <- append(all_data, json_data$data)
+    }
     
-    insights_data = response.json().get('data', [])
-    insights_dict = {item['name']: item['values'][0]['value'] for item in insights_data}
-    return insights_dict
+    # 👉 Paginação
+    if (!is.null(json_data$paging$next)) {
+      url <- json_data$paging$next
+    } else {
+      break
+    }
+  }
+  
+  return(all_data)
+}
 
-def run_pipeline():
-    print(f"[{datetime.datetime.now()}] Iniciando extração de dados do Instagram...")
-    
-    media_list = get_instagram_media()
-    if not media_list:
-        print("Nenhum post encontrado ou erro na API.")
-        return
+# ▶️ Executa coleta
+cat("🚀 Iniciando coleta...\n")
 
-    all_data = []
-    
-    for media in media_list:
-        media_id = media['id']
-        media_type = media['media_type']
-        
-        print(f"Processando post ID: {media_id} ({media_type})")
-        
-        # Dados básicos do post
-        post_info = {
-            'post_id': media_id,
-            'caption': media.get('caption', ''),
-            'timestamp': media['timestamp'],
-            'media_type': media_type,
-            'permalink': media['permalink']
-        }
-        
-        # Buscar métricas de insights
-        insights = get_media_insights(media_id, media_type)
-        post_info.update(insights)
-        
-        all_data.append(post_info)
+media_data <- get_all_media(base_url, access_token)
 
-    # Criar DataFrame e salvar em CSV
-    df = pd.DataFrame(all_data)
-    
-    # Garantir que as colunas de métricas existam (mesmo que vazias)
-    expected_metrics = ['impressions', 'reach', 'engagement', 'saved', 'video_views']
-    for metric in expected_metrics:
-        if metric not in df.columns:
-            df[metric] = 0
-            
-    # Preencher valores nulos com 0
-    df = df.fillna(0)
-    
-    # Salvar arquivo
-    df.to_csv(OUTPUT_FILE, index=False, encoding='utf-8-sig')
-    print(f"[{datetime.datetime.now()}] Pipeline concluído! Dados salvos em: {OUTPUT_FILE}")
+if (length(media_data) == 0) {
+  stop("Nenhum dado retornado.")
+}
 
-if __name__ == "__main__":
-    # Verifica se o usuário já substituiu as credenciais
-    if ACCESS_TOKEN == 'XXXXX' or INSTAGRAM_ACCOUNT_ID == 'YYYYY':
-        print("ERRO: Você precisa substituir 'XXXXX' e 'YYYYY' pelas suas credenciais reais no script.")
-    else:
-        run_pipeline()
+# 📊 Converte para dataframe
+df <- do.call(rbind, lapply(media_data, as.data.frame))
+
+# 🧹 Limpeza básica
+df$caption[is.na(df$caption)] <- ""
+
+# 📅 Ajusta data
+df$timestamp <- as.POSIXct(df$timestamp, format="%Y-%m-%dT%H:%M:%S")
+
+# 💾 Exporta Excel
+write.xlsx(df, "instagram_posts.xlsx", overwrite = TRUE)
+
+cat("✅ Finalizado! Arquivo salvo como instagram_posts.xlsx\n")
