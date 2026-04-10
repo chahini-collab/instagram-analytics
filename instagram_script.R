@@ -77,7 +77,7 @@ get_all_media <- function(ig_id, token) {
     )
 
     if (!is.null(data$data)) {
-      all_data <- append(all_data, data$data)
+      all_data <- c(all_data, data$data)
     }
 
     if (!is.null(data$paging) && !is.null(data$paging[["next"]])) {
@@ -103,14 +103,12 @@ if (length(media_data) == 0) {
 }
 
 # ================================
-# DATAFRAME (CORRETO)
+# DATAFRAME (FORMA SEGURA)
 # ================================
-df <- do.call(rbind, lapply(media_data, function(x) {
-  as.data.frame(x, stringsAsFactors = FALSE)
-}))
-
-# 🔥 REMOVE COLUNA BUGADA
-df <- df[, !grepl("^X", colnames(df))]
+df <- fromJSON(
+  toJSON(media_data),
+  flatten = TRUE
+)
 
 # ================================
 # GARANTE COLUNAS
