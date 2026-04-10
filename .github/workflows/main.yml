@@ -27,18 +27,27 @@ jobs:
         env:
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
         run: |
+          echo "🔐 Testando token..."
+          if [ -z "$ACCESS_TOKEN" ]; then
+            echo "❌ ACCESS_TOKEN vazio!"
+            exit 1
+          fi
+
           Rscript instagram_script.R
 
       - name: Commit updated file
         run: |
           git config --global user.name "github-actions"
           git config --global user.email "actions@github.com"
-          
-          # Remove Excel antigo (se existir)
-          git rm -f instagram_posts.xlsx || true
-          
-          # Adiciona novo CSV
+
+          # Verifica se o arquivo foi gerado
+          if [ ! -f instagram_posts.csv ]; then
+            echo "❌ Arquivo não gerado!"
+            exit 1
+          fi
+
           git add instagram_posts.csv
-          
-          git commit -m "Atualizando dados automaticamente" || echo "Sem mudanças"
+
+          # Só commit se houver mudança
+          git diff --cached --quiet || git commit -m "Atualizando dados automaticamente"
           git push
