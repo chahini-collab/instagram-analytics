@@ -40,7 +40,7 @@ make_request <- function(url, query_list) {
 }
 
 # ================================
-# PEGAR IG ID
+# IG ID
 # ================================
 get_ig_id <- function(page_id, token) {
 
@@ -58,18 +58,15 @@ get_ig_id <- function(page_id, token) {
 }
 
 # ================================
-# PEGAR MEDIA
+# MEDIA
 # ================================
 get_all_media <- function(ig_id, token) {
 
   url <- paste0("https://graph.facebook.com/v25.0/", ig_id, "/media")
 
   all_data <- list()
-  page <- 1
 
   repeat {
-
-    cat("📦 Página:", page, "\n")
 
     data <- make_request(
       url,
@@ -85,7 +82,6 @@ get_all_media <- function(ig_id, token) {
 
     if (!is.null(data$paging) && !is.null(data$paging[["next"]])) {
       url <- data$paging[["next"]]
-      page <- page + 1
     } else {
       break
     }
@@ -107,9 +103,14 @@ if (length(media_data) == 0) {
 }
 
 # ================================
-# DATAFRAME
+# DATAFRAME (CORRETO)
 # ================================
-df <- do.call(rbind, lapply(media_data, as.data.frame))
+df <- do.call(rbind, lapply(media_data, function(x) {
+  as.data.frame(x, stringsAsFactors = FALSE)
+}))
+
+# 🔥 REMOVE COLUNA BUGADA
+df <- df[, !grepl("^X", colnames(df))]
 
 # ================================
 # GARANTE COLUNAS
@@ -133,20 +134,16 @@ for (col in cols_needed) {
 # ================================
 # TRATAMENTOS
 # ================================
-
-# caption
 df$caption <- as.character(df$caption)
 df$caption[is.na(df$caption)] <- ""
 
-# 🔥 LIMPEZA PARA POWER BI
+# LIMPEZA POWER BI
 df$caption <- gsub("\n", " ", df$caption)
 df$caption <- gsub("\r", " ", df$caption)
 df$caption <- gsub("\"", "'", df$caption)
 
-# timestamp
 df$timestamp <- as.POSIXct(df$timestamp, format="%Y-%m-%dT%H:%M:%S")
 
-# métricas
 df$like_count[is.na(df$like_count)] <- 0
 df$comments_count[is.na(df$comments_count)] <- 0
 
