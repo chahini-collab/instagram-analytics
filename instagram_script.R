@@ -14,19 +14,31 @@ if (access_token == "") {
   stop("❌ ACCESS_TOKEN não encontrado.")
 }
 
+cat("🔐 Token (primeiros 10):", substr(access_token, 1, 10), "...\n")
+
 # ================================
-# FUNÇÃO REQUEST
+# FUNÇÃO REQUEST COM DEBUG
 # ================================
 make_request <- function(url) {
+  cat("🌐 URL:", url, "\n\n")
+
   response <- GET(url)
 
   content_text <- content(response, "text", encoding = "UTF-8")
-  json_data <- fromJSON(content_text, flatten = TRUE)
+
+  cat("📥 Resposta bruta (primeiros 200 chars):\n")
+  cat(substr(content_text, 1, 200), "\n\n")
 
   if (status_code(response) != 200) {
-    cat("❌ Erro HTTP bruto:\n", content_text, "\n")
-    stop(paste("Erro HTTP:", status_code(response)))
+    stop(paste("❌ Erro HTTP:", status_code(response)))
   }
+
+  # 🔥 PROTEÇÃO CONTRA HTML
+  if (grepl("<!DOCTYPE html>", content_text)) {
+    stop("❌ API retornou HTML → provável problema de token")
+  }
+
+  json_data <- fromJSON(content_text, flatten = TRUE)
 
   if (!is.null(json_data$error)) {
     print(json_data$error)
@@ -37,7 +49,7 @@ make_request <- function(url) {
 }
 
 # ================================
-# PEGAR IG ID VIA PAGE
+# PEGAR IG ID
 # ================================
 get_ig_id <- function(page_id, token) {
   url <- paste0(
@@ -49,15 +61,11 @@ get_ig_id <- function(page_id, token) {
 
   data <- make_request(url)
 
-  if (is.null(data$instagram_business_account$id)) {
-    stop("❌ Não foi possível encontrar o Instagram vinculado.")
-  }
-
   return(data$instagram_business_account$id)
 }
 
 # ================================
-# COLETAR POSTS (COM PAGINAÇÃO)
+# PEGAR MEDIA
 # ================================
 get_all_media <- function(ig_id, token) {
 
@@ -80,7 +88,6 @@ get_all_media <- function(ig_id, token) {
       all_data <- append(all_data, data$data)
     }
 
-    # 🔥 CORREÇÃO DO "next"
     if (!is.null(data$paging) && !is.null(data$paging[["next"]])) {
       url <- data$paging[["next"]]
       page <- page + 1
@@ -104,28 +111,14 @@ if (length(media_data) == 0) {
   stop("❌ Nenhum dado retornado.")
 }
 
-# ================================
-# TRANSFORMAR EM DATAFRAME
-# ================================
 df <- do.call(rbind, lapply(media_data, as.data.frame))
 
-# Tratamentos
-if ("caption" %in% colnames(df)) {
-  df$caption[is.na(df$caption)] <- ""
-}
-
-if ("timestamp" %in% colnames(df)) {
-  df$timestamp <- as.POSIXct(df$timestamp, format="%Y-%m-%dT%H:%M:%S")
-}
+df$caption[is.na(df$caption)] <- ""
+df$timestamp <- as.POSIXct(df$timestamp, format="%Y-%m-%dT%H:%M:%S")
 
 if (!"like_count" %in% colnames(df)) df$like_count <- 0
 if (!"comments_count" %in% colnames(df)) df$comments_count <- 0
 
-cat("📊 Total de posts:", nrow(df), "\n")
-
-# ================================
-# EXPORT
-# ================================
 write.xlsx(df, "instagram_posts.xlsx", overwrite = TRUE)
 write.csv(df, "instagram_posts.csv", row.names = FALSE)
 
