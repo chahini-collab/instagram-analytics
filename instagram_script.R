@@ -14,35 +14,32 @@ if (access_token == "") {
   stop("❌ ACCESS_TOKEN não encontrado.")
 }
 
-cat("🔐 Token (primeiros 10):", substr(access_token, 1, 10), "...\n")
+cat("🔐 Token OK\n")
 
 # ================================
-# FUNÇÃO REQUEST COM DEBUG
+# FUNÇÃO REQUEST
 # ================================
-make_request <- function(url) {
-  cat("🌐 URL:", url, "\n\n")
+make_request <- function(url, query_list) {
 
-  response <- GET(url)
+  response <- GET(
+    url,
+    query = query_list
+  )
 
   content_text <- content(response, "text", encoding = "UTF-8")
 
-  cat("📥 Resposta bruta (primeiros 200 chars):\n")
-  cat(substr(content_text, 1, 200), "\n\n")
+  cat("📥 Status:", status_code(response), "\n")
 
   if (status_code(response) != 200) {
-    stop(paste("❌ Erro HTTP:", status_code(response)))
-  }
-
-  # 🔥 PROTEÇÃO CONTRA HTML
-  if (grepl("<!DOCTYPE html>", content_text)) {
-    stop("❌ API retornou HTML → provável problema de token")
+    cat(content_text, "\n")
+    stop("❌ Erro HTTP")
   }
 
   json_data <- fromJSON(content_text, flatten = TRUE)
 
   if (!is.null(json_data$error)) {
     print(json_data$error)
-    stop(paste("Erro da API:", json_data$error$message))
+    stop(json_data$error$message)
   }
 
   return(json_data)
@@ -52,14 +49,19 @@ make_request <- function(url) {
 # PEGAR IG ID
 # ================================
 get_ig_id <- function(page_id, token) {
+
   url <- paste0(
     "https://graph.facebook.com/v25.0/",
-    page_id,
-    "?fields=instagram_business_account&access_token=",
-    token
+    page_id
   )
 
-  data <- make_request(url)
+  data <- make_request(
+    url,
+    list(
+      fields = "instagram_business_account",
+      access_token = token
+    )
+  )
 
   return(data$instagram_business_account$id)
 }
@@ -72,17 +74,20 @@ get_all_media <- function(ig_id, token) {
   url <- paste0(
     "https://graph.facebook.com/v25.0/",
     ig_id,
-    "/media?fields=id,caption,media_type,media_url,timestamp,like_count,comments_count&access_token=",
-    token
+    "/media"
   )
 
   all_data <- list()
-  page <- 1
 
   repeat {
-    cat("📦 Página:", page, "\n")
 
-    data <- make_request(url)
+    data <- make_request(
+      url,
+      list(
+        fields = "id,caption,media_type,media_url,timestamp,like_count,comments_count",
+        access_token = token
+      )
+    )
 
     if (!is.null(data$data)) {
       all_data <- append(all_data, data$data)
@@ -90,7 +95,6 @@ get_all_media <- function(ig_id, token) {
 
     if (!is.null(data$paging) && !is.null(data$paging[["next"]])) {
       url <- data$paging[["next"]]
-      page <- page + 1
     } else {
       break
     }
