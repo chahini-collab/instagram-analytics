@@ -2,7 +2,7 @@ library(httr)
 library(jsonlite)
 library(openxlsx)
 
-# 🔐 TOKEN via variável de ambiente (RECOMENDADO)
+# 🔐 Token via variável de ambiente (RECOMENDADO)
 access_token <- Sys.getenv("ACCESS_TOKEN")
 
 # 🆔 ID correto do Instagram
@@ -30,17 +30,19 @@ get_all_media <- function(url, token) {
     data <- content(response, "text", encoding = "UTF-8")
     json_data <- fromJSON(data, flatten = TRUE)
     
+    # ❗ Verifica erro da API
     if (!is.null(json_data$error)) {
       stop(paste("Erro da API:", json_data$error$message))
     }
     
+    # 📥 Adiciona dados
     if (!is.null(json_data$data)) {
       all_data <- append(all_data, json_data$data)
     }
     
-    # 👉 Paginação
-    if (!is.null(json_data$paging$next)) {
-      url <- json_data$paging$next
+    # 🔁 PAGINAÇÃO (CORRIGIDO AQUI)
+    if (!is.null(json_data$paging) && !is.null(json_data$paging[["next"]])) {
+      url <- json_data$paging[["next"]]
     } else {
       break
     }
@@ -61,11 +63,23 @@ if (length(media_data) == 0) {
 # 📊 Converte para dataframe
 df <- do.call(rbind, lapply(media_data, as.data.frame))
 
-# 🧹 Limpeza básica
-df$caption[is.na(df$caption)] <- ""
+# 🧹 Limpeza
+if ("caption" %in% colnames(df)) {
+  df$caption[is.na(df$caption)] <- ""
+}
 
 # 📅 Ajusta data
-df$timestamp <- as.POSIXct(df$timestamp, format="%Y-%m-%dT%H:%M:%S")
+if ("timestamp" %in% colnames(df)) {
+  df$timestamp <- as.POSIXct(df$timestamp, format="%Y-%m-%dT%H:%M:%S")
+}
+
+# 🔢 Garante colunas (evita erro se API não retornar)
+expected_cols <- c("like_count", "comments_count")
+for (col in expected_cols) {
+  if (!(col %in% colnames(df))) {
+    df[[col]] <- 0
+  }
+}
 
 # 💾 Exporta Excel
 write.xlsx(df, "instagram_posts.xlsx", overwrite = TRUE)
