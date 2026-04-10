@@ -103,37 +103,29 @@ if (length(media_data) == 0) {
 }
 
 # ================================
-# DATAFRAME (FORMA SEGURA)
+# DATAFRAME (FORMA CORRETA)
 # ================================
-df <- fromJSON(
-  toJSON(media_data),
-  flatten = TRUE
-)
+df_list <- lapply(media_data, function(x) {
 
-# ================================
-# GARANTE COLUNAS
-# ================================
-cols_needed <- c(
-  "id",
-  "caption",
-  "media_type",
-  "media_url",
-  "timestamp",
-  "like_count",
-  "comments_count"
-)
+  data.frame(
+    id = ifelse(!is.null(x$id), x$id, NA),
+    caption = ifelse(!is.null(x$caption), x$caption, ""),
+    media_type = ifelse(!is.null(x$media_type), x$media_type, NA),
+    media_url = ifelse(!is.null(x$media_url), x$media_url, NA),
+    timestamp = ifelse(!is.null(x$timestamp), x$timestamp, NA),
+    like_count = ifelse(!is.null(x$like_count), x$like_count, 0),
+    comments_count = ifelse(!is.null(x$comments_count), x$comments_count, 0),
+    stringsAsFactors = FALSE
+  )
 
-for (col in cols_needed) {
-  if (!(col %in% colnames(df))) {
-    df[[col]] <- NA
-  }
-}
+})
+
+df <- do.call(rbind, df_list)
 
 # ================================
 # TRATAMENTOS
 # ================================
 df$caption <- as.character(df$caption)
-df$caption[is.na(df$caption)] <- ""
 
 # LIMPEZA POWER BI
 df$caption <- gsub("\n", " ", df$caption)
@@ -141,9 +133,6 @@ df$caption <- gsub("\r", " ", df$caption)
 df$caption <- gsub("\"", "'", df$caption)
 
 df$timestamp <- as.POSIXct(df$timestamp, format="%Y-%m-%dT%H:%M:%S")
-
-df$like_count[is.na(df$like_count)] <- 0
-df$comments_count[is.na(df$comments_count)] <- 0
 
 cat("📊 Total de posts:", nrow(df), "\n")
 
