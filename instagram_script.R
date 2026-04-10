@@ -14,25 +14,19 @@ if (access_token == "") {
   stop("❌ ACCESS_TOKEN não encontrado.")
 }
 
-cat("🔐 Token OK\n")
-
 # ================================
-# FUNÇÃO REQUEST
+# REQUEST
 # ================================
 make_request <- function(url, query_list) {
 
-  response <- GET(
-    url,
-    query = query_list
-  )
-
+  response <- GET(url, query = query_list)
   content_text <- content(response, "text", encoding = "UTF-8")
 
-  cat("📥 Status:", status_code(response), "\n")
+  cat("📡 Status:", status_code(response), "\n")
 
   if (status_code(response) != 200) {
-    cat(content_text, "\n")
-    stop("❌ Erro HTTP")
+    cat(content_text)
+    stop("Erro HTTP")
   }
 
   json_data <- fromJSON(content_text, flatten = TRUE)
@@ -46,14 +40,11 @@ make_request <- function(url, query_list) {
 }
 
 # ================================
-# PEGAR IG ID
+# IG ID
 # ================================
 get_ig_id <- function(page_id, token) {
 
-  url <- paste0(
-    "https://graph.facebook.com/v25.0/",
-    page_id
-  )
+  url <- paste0("https://graph.facebook.com/v25.0/", page_id)
 
   data <- make_request(
     url,
@@ -67,15 +58,11 @@ get_ig_id <- function(page_id, token) {
 }
 
 # ================================
-# PEGAR MEDIA
+# MEDIA
 # ================================
 get_all_media <- function(ig_id, token) {
 
-  url <- paste0(
-    "https://graph.facebook.com/v25.0/",
-    ig_id,
-    "/media"
-  )
+  url <- paste0("https://graph.facebook.com/v25.0/", ig_id, "/media")
 
   all_data <- list()
 
@@ -117,12 +104,41 @@ if (length(media_data) == 0) {
 
 df <- do.call(rbind, lapply(media_data, as.data.frame))
 
+# ================================
+# 🔥 CORREÇÃO CRÍTICA AQUI
+# ================================
+
+# Garante colunas obrigatórias
+cols_needed <- c(
+  "id",
+  "caption",
+  "media_type",
+  "media_url",
+  "timestamp",
+  "like_count",
+  "comments_count"
+)
+
+for (col in cols_needed) {
+  if (!(col %in% colnames(df))) {
+    df[[col]] <- NA
+  }
+}
+
+# Trata caption com segurança
+df$caption <- as.character(df$caption)
 df$caption[is.na(df$caption)] <- ""
+
+# Trata timestamp
 df$timestamp <- as.POSIXct(df$timestamp, format="%Y-%m-%dT%H:%M:%S")
 
-if (!"like_count" %in% colnames(df)) df$like_count <- 0
-if (!"comments_count" %in% colnames(df)) df$comments_count <- 0
+# Trata métricas
+df$like_count[is.na(df$like_count)] <- 0
+df$comments_count[is.na(df$comments_count)] <- 0
 
+# ================================
+# EXPORT
+# ================================
 write.xlsx(df, "instagram_posts.xlsx", overwrite = TRUE)
 write.csv(df, "instagram_posts.csv", row.names = FALSE)
 
