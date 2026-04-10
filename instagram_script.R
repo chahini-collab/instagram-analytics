@@ -103,9 +103,12 @@ if (length(media_data) == 0) {
 }
 
 # ================================
-# DATAFRAME (FORMA CORRETA)
+# DATAFRAME (À PROVA DE ERRO)
 # ================================
 df_list <- lapply(media_data, function(x) {
+
+  # 🔥 SE NÃO FOR LISTA, IGNORA
+  if (!is.list(x)) return(NULL)
 
   data.frame(
     id = ifelse(!is.null(x$id), x$id, NA),
@@ -117,8 +120,10 @@ df_list <- lapply(media_data, function(x) {
     comments_count = ifelse(!is.null(x$comments_count), x$comments_count, 0),
     stringsAsFactors = FALSE
   )
-
 })
+
+# REMOVE NULLs
+df_list <- Filter(Negate(is.null), df_list)
 
 df <- do.call(rbind, df_list)
 
