@@ -103,43 +103,45 @@ if (length(media_data) == 0) {
 }
 
 # ================================
-# DATAFRAME (À PROVA DE ERRO)
+# DATAFRAME (ROBUSTO DE VERDADE)
 # ================================
 df_list <- lapply(media_data, function(x) {
 
-  # 🔥 SE NÃO FOR LISTA, IGNORA
+  # garante lista
   if (!is.list(x)) return(NULL)
 
   data.frame(
-    id = ifelse(!is.null(x$id), x$id, NA),
-    caption = ifelse(!is.null(x$caption), x$caption, ""),
-    media_type = ifelse(!is.null(x$media_type), x$media_type, NA),
-    media_url = ifelse(!is.null(x$media_url), x$media_url, NA),
-    timestamp = ifelse(!is.null(x$timestamp), x$timestamp, NA),
-    like_count = ifelse(!is.null(x$like_count), x$like_count, 0),
-    comments_count = ifelse(!is.null(x$comments_count), x$comments_count, 0),
+    id = if (!is.null(x$id)) x$id else NA,
+    caption = if (!is.null(x$caption)) x$caption else "",
+    media_type = if (!is.null(x$media_type)) x$media_type else NA,
+    media_url = if (!is.null(x$media_url)) x$media_url else NA,
+    timestamp = if (!is.null(x$timestamp)) x$timestamp else NA,
+    like_count = if (!is.null(x$like_count)) x$like_count else 0,
+    comments_count = if (!is.null(x$comments_count)) x$comments_count else 0,
     stringsAsFactors = FALSE
   )
 })
 
-# REMOVE NULLs
+# remove inválidos
 df_list <- Filter(Negate(is.null), df_list)
 
-df <- do.call(rbind, df_list)
+# 🔥 garante bind correto
+df <- do.call(rbind.fill, df_list)
+# fallback caso rbind.fill não exista
+if (is.null(df)) {
+  df <- do.call(rbind, df_list)
+}
 
 # ================================
 # TRATAMENTOS
 # ================================
 df$caption <- as.character(df$caption)
 
-# LIMPEZA POWER BI
 df$caption <- gsub("\n", " ", df$caption)
 df$caption <- gsub("\r", " ", df$caption)
 df$caption <- gsub("\"", "'", df$caption)
 
 df$timestamp <- as.POSIXct(df$timestamp, format="%Y-%m-%dT%H:%M:%S")
-
-cat("📊 Total de posts:", nrow(df), "\n")
 
 # ================================
 # EXPORT
