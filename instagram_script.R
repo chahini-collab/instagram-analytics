@@ -103,11 +103,10 @@ if (length(media_data) == 0) {
 }
 
 # ================================
-# DATAFRAME (ROBUSTO DE VERDADE)
+# DATAFRAME (SEM BUG)
 # ================================
 df_list <- lapply(media_data, function(x) {
 
-  # garante lista
   if (!is.list(x)) return(NULL)
 
   data.frame(
@@ -122,18 +121,13 @@ df_list <- lapply(media_data, function(x) {
   )
 })
 
-# remove inválidos
 df_list <- Filter(Negate(is.null), df_list)
 
-# 🔥 garante bind correto
-df <- do.call(rbind.fill, df_list)
-# fallback caso rbind.fill não exista
-if (is.null(df)) {
-  df <- do.call(rbind, df_list)
-}
+# 🔥 bind seguro (sem plyr)
+df <- do.call(rbind, df_list)
 
 # ================================
-# TRATAMENTOS
+# TRATAMENTO
 # ================================
 df$caption <- as.character(df$caption)
 
@@ -142,6 +136,8 @@ df$caption <- gsub("\r", " ", df$caption)
 df$caption <- gsub("\"", "'", df$caption)
 
 df$timestamp <- as.POSIXct(df$timestamp, format="%Y-%m-%dT%H:%M:%S")
+
+cat("📊 Total de posts:", nrow(df), "\n")
 
 # ================================
 # EXPORT
