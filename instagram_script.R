@@ -4,36 +4,72 @@ library(dplyr)
 
 access_token <- Sys.getenv("ACCESS_TOKEN")
 
-url <- paste0(
+base_url <- paste0(
   "https://graph.facebook.com/v19.0/",
   "111286197030443",
   "?fields=instagram_business_account{media.limit(100){id,caption,media_type,media_url,timestamp,like_count,comments_count}}",
   "&access_token=", access_token
 )
 
-all_data <- list()
-next_url <- url
+all_posts <- list()
+next_url <- base_url
 
 while (!is.null(next_url)) {
   
   res <- GET(next_url)
-  content_res <- content(res, as = "text", encoding = "UTF-8")
-  json <- fromJSON(content_res, flatten = TRUE)
-
-  cat("Status:", status_code(res), "\n")
+  json <- fromJSON(content(res, "text", encoding = "UTF-8"), flatten = TRUE)
 
   data_page <- json$instagram_business_account$media$data
-
   if (is.null(data_page)) break
 
-  all_data <- append(all_data, list(data_page))
-
+  all_posts <- append(all_posts, list(data_page))
   next_url <- json$instagram_business_account$media$paging$`next`
 }
 
-df <- bind_rows(all_data)
+df <- bind_rows(all_posts)
 
-cat("Total de posts:", nrow(df), "\n")
+# =========================
+# BUSCAR INSIGHTS (reach)
+# =========================
+
+get_insights <- function(media_id) {
+  url <- paste0(
+    "https://graph.facebook.com/v19.0/",
+    media_id,
+    "/insights?metric=reach,impressions,saved&access_token=",
+    access_token
+  )
+  
+  res <- GET(url)
+  json <- fromJSON(content(res, "text", encoding = "UTF-8"), flatten = TRUE)
+  
+  metrics <- json$data
+  
+  out <- list(
+    reach = NA,
+    impressions = NA,
+    saved = NA
+  )
+  
+  if (!is.null(metrics)) {
+    for (i in 1:length(metrics$name)) {
+      name <- metrics$name[i]
+      value <- metrics$values[[i]]$value
+      
+      if (name == "reach") out$reach <- value
+      if (name == "impressions") out$impressions <- value
+      if (name == "saved") out$saved <- value
+    }
+  }
+  
+  return(out)
+}
+
+# aplica para cada post
+insights <- lapply(df$id, get_insights)
+insights_df <- bind_rows(insights)
+
+df <- bind_cols(df, insights_df)
 
 # =========================
 # LIMPEZA
@@ -45,28 +81,15 @@ df <- df %>%
     caption = gsub("\n", " ", caption),
     caption = gsub("\r", " ", caption),
     caption = gsub("\"", "'", caption),
-
-    like_count = as.numeric(like_count),
-    comments_count = as.numeric(comments_count),
-
     timestamp = as.POSIXct(timestamp, format = "%Y-%m-%dT%H:%M:%S", tz = "UTC")
   )
 
 # =========================
-# EXPORT CORRIGIDO
+# EXPORT
 # =========================
 
 write.table(
-  df %>%
-    select(
-      id,
-      caption,
-      media_type,
-      media_url,
-      timestamp,
-      like_count,
-      comments_count
-    ),
+  df,
   "instagram_posts.csv",
   sep = ";",
   row.names = FALSE,
