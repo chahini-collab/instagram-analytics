@@ -31,7 +31,6 @@ while (!is.null(next_url)) {
   next_url <- json$instagram_business_account$media$paging$`next`
 }
 
-# Junta tudo
 df <- bind_rows(all_data)
 
 cat("Total de posts:", nrow(df), "\n")
@@ -46,7 +45,6 @@ df <- df %>%
     caption = gsub("\n", " ", caption),
     caption = gsub("\r", " ", caption),
     caption = gsub("\"", "'", caption),
-    caption = as.character(caption),
 
     like_count = as.numeric(like_count),
     comments_count = as.numeric(comments_count),
@@ -55,10 +53,10 @@ df <- df %>%
   )
 
 # =========================
-# EXPORT (AGORA COMPLETO)
+# EXPORT CORRIGIDO
 # =========================
 
-write.csv(
+write.table(
   df %>%
     select(
       id,
@@ -70,6 +68,7 @@ write.csv(
       comments_count
     ),
   "instagram_posts.csv",
+  sep = ";",
   row.names = FALSE,
   fileEncoding = "UTF-8",
   quote = TRUE
