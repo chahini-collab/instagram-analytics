@@ -1,5 +1,6 @@
 library(httr)
 library(jsonlite)
+library(dplyr)
 
 access_token <- Sys.getenv("ACCESS_TOKEN")
 
@@ -16,46 +17,58 @@ next_url <- url
 while (!is.null(next_url)) {
   
   res <- GET(next_url)
-  content <- content(res, as = "text", encoding = "UTF-8")
-  json <- fromJSON(content, flatten = TRUE)
+  content_res <- content(res, as = "text", encoding = "UTF-8")
+  json <- fromJSON(content_res, flatten = TRUE)
 
   cat("Status:", status_code(res), "\n")
 
-  # 🔥 CAMINHO CORRETO DOS DADOS
   data_page <- json$instagram_business_account$media$data
 
   if (is.null(data_page)) break
 
   all_data <- append(all_data, list(data_page))
 
-  # Paginação
   next_url <- json$instagram_business_account$media$paging$`next`
 }
 
 # Junta tudo
-df <- do.call(rbind, all_data)
-
-# 🔥 GARANTE QUE É DATAFRAME
-df <- as.data.frame(df)
+df <- bind_rows(all_data)
 
 cat("Total de posts:", nrow(df), "\n")
 
 # =========================
-# LIMPEZA (CRÍTICA)
+# LIMPEZA
 # =========================
-df$caption <- ifelse(is.na(df$caption), "", df$caption)
 
-df$caption <- gsub("\n", " ", df$caption)
-df$caption <- gsub("\r", " ", df$caption)
-df$caption <- gsub("\"", "'", df$caption)
+df <- df %>%
+  mutate(
+    caption = ifelse(is.na(caption), "", caption),
+    caption = gsub("\n", " ", caption),
+    caption = gsub("\r", " ", caption),
+    caption = gsub("\"", "'", caption),
+    caption = as.character(caption),
 
-df$caption <- as.character(df$caption)
+    like_count = as.numeric(like_count),
+    comments_count = as.numeric(comments_count),
+
+    timestamp = as.POSIXct(timestamp, format = "%Y-%m-%dT%H:%M:%S", tz = "UTC")
+  )
 
 # =========================
-# EXPORT
+# EXPORT (AGORA COMPLETO)
 # =========================
+
 write.csv(
-  df[, c("caption", "timestamp")],
+  df %>%
+    select(
+      id,
+      caption,
+      media_type,
+      media_url,
+      timestamp,
+      like_count,
+      comments_count
+    ),
   "instagram_posts.csv",
   row.names = FALSE,
   fileEncoding = "UTF-8",
