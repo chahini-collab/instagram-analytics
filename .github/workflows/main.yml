@@ -18,6 +18,9 @@ jobs:
         run: |
           Rscript -e 'install.packages(c("httr","jsonlite","dplyr","readr"), repos="https://cloud.r-project.org")'
 
+      - name: DEBUG FILES
+        run: ls -la
+
       - name: DEBUG ENV
         run: |
           echo "TOKEN LENGTH: ${#ACCESS_TOKEN}"
@@ -31,4 +34,5 @@ jobs:
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
         run: |
-          Rscript script.R
+          echo "🚀 Executando instagram_script.R"
+          Rscript instagram_script.R
