@@ -16,10 +16,14 @@ if (ACCESS_TOKEN == "" || IG_USER_ID == "") {
 # ================================
 # LIBS
 # ================================
-library(httr)
-library(jsonlite)
-library(dplyr)
-library(readr)
+suppressPackageStartupMessages({
+  library(httr)
+  library(jsonlite)
+  library(dplyr)
+  library(readr)
+})
+
+`%||%` <- function(a, b) if (!is.null(a)) a else b
 
 # ================================
 # BUSCAR POSTS
@@ -36,10 +40,14 @@ url_media <- paste0(
 res_media <- GET(url_media)
 
 if (status_code(res_media) != 200) {
-  stop(paste("❌ Erro API media:", content(res_media, "text")))
+  stop(paste("❌ Erro API media:", content(res_media, "text", encoding = "UTF-8")))
 }
 
-data_media <- fromJSON(content(res_media, "text"), flatten = TRUE)$data
+data_media <- fromJSON(content(res_media, "text", encoding = "UTF-8"), flatten = TRUE)$data
+
+if (is.null(data_media) || nrow(data_media) == 0) {
+  stop("❌ Nenhum post retornado pela API")
+}
 
 cat("✅ Posts encontrados:", nrow(data_media), "\n")
 
@@ -64,7 +72,7 @@ get_insights <- function(post_id) {
     ))
   }
 
-  data <- fromJSON(content(res, "text"), flatten = TRUE)
+  data <- fromJSON(content(res, "text", encoding = "UTF-8"), flatten = TRUE)
 
   if (is.null(data$data)) {
     return(data.frame(
@@ -85,8 +93,6 @@ get_insights <- function(post_id) {
     saved = metrics$saved %||% NA
   ))
 }
-
-`%||%` <- function(a, b) if (!is.null(a)) a else b
 
 # ================================
 # LOOP POSTS
@@ -115,10 +121,10 @@ url_followers <- paste0(
 res_followers <- GET(url_followers)
 
 if (status_code(res_followers) != 200) {
-  stop(paste("❌ Erro followers:", content(res_followers, "text")))
+  stop(paste("❌ Erro followers:", content(res_followers, "text", encoding = "UTF-8")))
 }
 
-followers <- fromJSON(content(res_followers, "text"))$followers_count
+followers <- fromJSON(content(res_followers, "text", encoding = "UTF-8"))$followers_count
 
 cat("✅ Followers:", followers, "\n")
 
@@ -129,7 +135,7 @@ df <- bind_cols(data_media, insights_df) %>%
   mutate(followers = followers)
 
 # ================================
-# SALVAR
+# SALVAR CSV
 # ================================
 cat("💾 Salvando CSV...\n")
 
