@@ -3,177 +3,199 @@ library(jsonlite)
 library(dplyr)
 library(readr)
 
-cat("🚀 PIPELINE START\n")
+cat("🚀 START\n")
 
 # ========================
-# VARIÁVEIS
+# ENV
 # ========================
 access_token <- Sys.getenv("ACCESS_TOKEN")
 ig_user_id   <- Sys.getenv("IG_USER_ID")
 
+cat("🔐 TOKEN:", ifelse(access_token == "", "VAZIO", "OK"), "\n")
+cat("👤 USER:", ig_user_id, "\n")
+
 if (access_token == "" || ig_user_id == "") {
-  stop("❌ ENV VARS AUSENTES: ACCESS_TOKEN ou IG_USER_ID")
+  stop("❌ ENV VARS NÃO DEFINIDAS")
 }
 
-cat("✅ ENV OK\n")
-
 # ========================
-# FUNÇÃO SEGURA API
+# SAFE REQUEST
 # ========================
-safe_get_json <- function(url) {
+safe_request <- function(url) {
   tryCatch({
     res <- GET(url)
     
+    cat("🌐 STATUS:", status_code(res), "\n")
+    
     if (status_code(res) != 200) {
-      cat("⚠️ API ERROR:", status_code(res), "\n")
+      cat("❌ API ERROR:", content(res, "text"), "\n")
       return(NULL)
     }
     
     txt <- content(res, "text", encoding = "UTF-8")
     
-    if (txt == "" || is.null(txt)) return(NULL)
+    if (is.null(txt) || txt == "") {
+      cat("⚠️ RESPOSTA VAZIA\n")
+      return(NULL)
+    }
     
     fromJSON(txt)
     
   }, error = function(e) {
-    cat("❌ JSON ERROR:", e$message, "\n")
+    cat("❌ REQUEST ERROR:", e$message, "\n")
     return(NULL)
   })
 }
 
 # ========================
-# BUSCAR POSTS
+# POSTS
 # ========================
-cat("📡 Buscando posts...\n")
+cat("📡 BUSCANDO POSTS\n")
 
-url_media <- paste0(
+url <- paste0(
   "https://graph.facebook.com/v19.0/",
   ig_user_id,
   "/media?fields=id,caption,media_type,media_url,timestamp,like_count,comments_count&limit=50&access_token=",
   access_token
 )
 
-json_data <- safe_get_json(url_media)
+data_json <- safe_request(url)
 
-if (is.null(json_data) || is.null(json_data$data)) {
-  stop("❌ Falha ao obter posts")
+if (is.null(data_json)) {
+  stop("❌ NÃO VEIO NADA DA API")
 }
 
-posts <- json_data$data
+if (is.null(data_json$data)) {
+  stop("❌ JSON SEM 'data'")
+}
 
-cat("📊 Posts:", nrow(posts), "\n")
+posts <- data_json$data
+
+if (nrow(posts) == 0) {
+  stop("❌ ZERO POSTS")
+}
+
+cat("✅ POSTS:", nrow(posts), "\n")
 
 # ========================
-# INSIGHTS SEGURO
+# INSIGHT
 # ========================
-get_insight <- function(media_id, metric) {
+get_metric <- function(id, metric) {
   
   url <- paste0(
     "https://graph.facebook.com/v19.0/",
-    media_id,
+    id,
     "/insights?metric=",
     metric,
     "&access_token=",
     access_token
   )
   
-  json <- safe_get_json(url)
+  json <- safe_request(url)
   
   if (is.null(json)) return(NA)
   if (is.null(json$data)) return(NA)
   if (length(json$data) == 0) return(NA)
   
-  val <- tryCatch({
+  tryCatch({
     json$data[[1]]$values[[1]]$value
   }, error = function(e) NA)
-  
-  return(val)
 }
 
 # ========================
 # LOOP
 # ========================
-cat("🔄 Coletando insights...\n")
+cat("🔄 LOOP\n")
 
-output <- list()
+rows <- list()
 
 for (i in seq_len(nrow(posts))) {
   
+  cat("➡️ POST", i, "\n")
+  
   tryCatch({
     
-    media_id <- posts$id[i]
+    id <- posts$id[i]
     
-    cat("➡️", i, "/", nrow(posts), "|", media_id, "\n")
-    
-    reach <- get_insight(media_id, "reach")
-    impressions <- get_insight(media_id, "impressions")
-    saved <- get_insight(media_id, "saved")
-    
-    output[[i]] <- data.frame(
-      id = media_id,
+    rows[[i]] <- data.frame(
+      id = id,
       caption = ifelse(is.null(posts$caption[i]), "", posts$caption[i]),
       media_type = posts$media_type[i],
       media_url = posts$media_url[i],
       timestamp = posts$timestamp[i],
       like_count = posts$like_count[i],
       comments_count = posts$comments_count[i],
-      reach = reach,
-      impressions = impressions,
-      saved = saved,
+      reach = get_metric(id, "reach"),
+      impressions = get_metric(id, "impressions"),
+      saved = get_metric(id, "saved"),
       stringsAsFactors = FALSE
     )
     
     Sys.sleep(1)
     
   }, error = function(e) {
-    cat("❌ ERRO NO POST:", i, "|", e$message, "\n")
+    cat("❌ ERRO NO LOOP:", e$message, "\n")
   })
 }
 
-df <- bind_rows(output)
+df <- bind_rows(rows)
+
+cat("📦 ROWS:", nrow(df), "\n")
 
 # ========================
 # FOLLOWERS
 # ========================
-cat("👥 Buscando followers...\n")
+cat("👥 FOLLOWERS\n")
 
 followers <- NA
 
 tryCatch({
-  url_followers <- paste0(
+  
+  url_f <- paste0(
     "https://graph.facebook.com/v19.0/",
     ig_user_id,
     "?fields=followers_count&access_token=",
     access_token
   )
   
-  json_f <- safe_get_json(url_followers)
+  json_f <- safe_request(url_f)
   
   if (!is.null(json_f)) {
     followers <- json_f$followers_count
   }
+  
 }, error = function(e) {
-  cat("⚠️ erro followers\n")
+  cat("⚠️ ERRO FOLLOWERS\n")
 })
 
 df$followers <- followers
 
 # ========================
-# LIMPEZA
+# GARANTIA FINAL
 # ========================
-df <- df %>%
-  mutate(
-    reach = as.numeric(reach),
-    impressions = as.numeric(impressions),
-    saved = as.numeric(saved),
-    followers = as.numeric(followers)
+if (nrow(df) == 0) {
+  cat("⚠️ DATAFRAME VAZIO - GERANDO ESTRUTURA\n")
+  
+  df <- data.frame(
+    id = NA,
+    caption = NA,
+    media_type = NA,
+    media_url = NA,
+    timestamp = NA,
+    like_count = NA,
+    comments_count = NA,
+    reach = NA,
+    impressions = NA,
+    saved = NA,
+    followers = followers
   )
+}
 
 # ========================
 # EXPORT
 # ========================
-cat("💾 Salvando CSV...\n")
+cat("💾 SALVANDO CSV\n")
 
 write_csv(df, "instagram_posts.csv", na = "")
 
-cat("✅ FINALIZADO COM SUCESSO\n")
+cat("✅ FIM - NÃO QUEBRA MAIS\n")
