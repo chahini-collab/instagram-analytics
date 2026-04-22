@@ -8,10 +8,18 @@ library(dplyr)
 access_token <- Sys.getenv("ACCESS_TOKEN")
 ig_user_id <- Sys.getenv("IG_USER_ID")
 
+cat("🔑 Token carregado\n")
+cat("🆔 IG User ID:", ig_user_id, "\n")
+
+if (access_token == "" || ig_user_id == "") {
+  stop("❌ ERRO: ACCESS_TOKEN ou IG_USER_ID não definidos")
+}
+
 # ==============================
 # 📥 FUNÇÃO: PEGAR POSTS
 # ==============================
 get_posts <- function() {
+  
   url <- paste0(
     "https://graph.facebook.com/v25.0/",
     ig_user_id,
@@ -19,7 +27,15 @@ get_posts <- function() {
     access_token
   )
   
-  res <- fromJSON(url)
+  cat("📡 Buscando posts...\n")
+  
+  res <- tryCatch({
+    fromJSON(url)
+  }, error = function(e) return(NULL))
+  
+  if (is.null(res) || !is.null(res$error) || is.null(res$data)) {
+    stop("❌ ERRO ao buscar posts")
+  }
   
   return(res$data)
 }
@@ -40,8 +56,8 @@ get_insights <- function(media_id) {
     fromJSON(url)
   }, error = function(e) return(NULL))
   
-  # ⚠️ tratamento de erro
   if (is.null(res) || !is.null(res$error) || is.null(res$data)) {
+    cat("⚠️ Insight falhou:", media_id, "\n")
     return(data.frame(
       reach = NA,
       impressions = NA,
@@ -55,9 +71,9 @@ get_insights <- function(media_id) {
   )
   
   return(data.frame(
-    reach = metrics["reach"],
-    impressions = metrics["impressions"],
-    saved = metrics["saved"]
+    reach = as.numeric(metrics["reach"]),
+    impressions = as.numeric(metrics["impressions"]),
+    saved = as.numeric(metrics["saved"])
   ))
 }
 
@@ -71,18 +87,24 @@ get_followers <- function() {
     access_token
   )
   
-  res <- fromJSON(url)
+  res <- tryCatch({
+    fromJSON(url)
+  }, error = function(e) return(NULL))
   
-  followers <- res$accounts$data[[1]]$instagram_business_account$followers_count
+  if (is.null(res) || is.null(res$accounts$data[[1]]$instagram_business_account)) {
+    cat("⚠️ Não conseguiu pegar followers\n")
+    return(NA)
+  }
   
-  return(followers)
+  return(res$accounts$data[[1]]$instagram_business_account$followers_count)
 }
 
 # ==============================
 # 🚀 PIPELINE
 # ==============================
 
-cat("🔄 Buscando posts...\n")
+cat("🚀 INICIANDO PIPELINE\n")
+
 posts <- get_posts()
 
 df <- posts %>%
@@ -106,13 +128,13 @@ insights_list <- list()
 
 for (i in 1:nrow(df)) {
   
-  cat("Post:", i, "de", nrow(df), "\n")
+  cat("Post", i, "de", nrow(df), "\n")
   
   insights <- get_insights(df$id[i])
   
   insights_list[[i]] <- insights
   
-  Sys.sleep(1) # 🐢 evita bloqueio da API
+  Sys.sleep(1) # evita bloqueio API
 }
 
 insights_df <- bind_rows(insights_list)
@@ -120,7 +142,7 @@ insights_df <- bind_rows(insights_list)
 df <- bind_cols(df, insights_df)
 
 # ==============================
-# 👥 ADICIONAR FOLLOWERS
+# 👥 FOLLOWERS
 # ==============================
 
 cat("👥 Buscando followers...\n")
@@ -137,15 +159,17 @@ df <- df %>%
   mutate(
     reach = as.numeric(reach),
     impressions = as.numeric(impressions),
-    saved = as.numeric(saved)
+    saved = as.numeric(saved),
+    like_count = as.numeric(like_count),
+    comments_count = as.numeric(comments_count)
   )
 
 # ==============================
-# 💾 EXPORTAR CSV
+# 💾 EXPORT
 # ==============================
 
 cat("💾 Salvando CSV...\n")
 
-write.csv(df, "instagram_posts.csv", row.names = FALSE)
+write.csv(df, "instagram_posts.csv", row.names = FALSE, na = "")
 
-cat("✅ FINALIZADO!\n")
+cat("✅ PIPELINE FINALIZADO COM SUCESSO\n")
