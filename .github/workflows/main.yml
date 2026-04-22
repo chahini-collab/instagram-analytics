@@ -8,7 +8,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Setup R
@@ -18,13 +18,17 @@ jobs:
         run: |
           Rscript -e 'install.packages(c("httr","jsonlite","dplyr","readr"), repos="https://cloud.r-project.org")'
 
+      - name: DEBUG ENV
+        run: |
+          echo "TOKEN LENGTH: ${#ACCESS_TOKEN}"
+          echo "USER ID: $IG_USER_ID"
+        env:
+          ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+
       - name: Run script
         env:
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
         run: |
-          echo "🔍 DEBUG ENV"
-          echo "TOKEN: ${ACCESS_TOKEN:+OK}"
-          echo "USER: $IG_USER_ID"
-
           Rscript script.R
