@@ -3,10 +3,15 @@ library(jsonlite)
 library(dplyr)
 
 access_token <- Sys.getenv("ACCESS_TOKEN")
+ig_user_id <- "111286197030443"
+
+# =========================
+# 1. BUSCAR POSTS
+# =========================
 
 base_url <- paste0(
   "https://graph.facebook.com/v19.0/",
-  "111286197030443",
+  ig_user_id,
   "?fields=instagram_business_account{media.limit(100){id,caption,media_type,media_url,timestamp,like_count,comments_count}}",
   "&access_token=", access_token
 )
@@ -28,11 +33,14 @@ while (!is.null(next_url)) {
 
 df <- bind_rows(all_posts)
 
+cat("Total de posts:", nrow(df), "\n")
+
 # =========================
-# BUSCAR INSIGHTS (reach)
+# 2. FUNÇÃO PARA INSIGHTS
 # =========================
 
 get_insights <- function(media_id) {
+  
   url <- paste0(
     "https://graph.facebook.com/v19.0/",
     media_id,
@@ -65,14 +73,36 @@ get_insights <- function(media_id) {
   return(out)
 }
 
-# aplica para cada post
+# =========================
+# 3. COLETAR INSIGHTS
+# =========================
+
 insights <- lapply(df$id, get_insights)
 insights_df <- bind_rows(insights)
 
 df <- bind_cols(df, insights_df)
 
 # =========================
-# LIMPEZA
+# 4. FOLLOWERS (CONTA)
+# =========================
+
+followers_url <- paste0(
+  "https://graph.facebook.com/v19.0/",
+  ig_user_id,
+  "?fields=followers_count&access_token=",
+  access_token
+)
+
+res_followers <- GET(followers_url)
+followers_json <- fromJSON(content(res_followers, "text", encoding = "UTF-8"))
+
+followers_count <- followers_json$followers_count
+
+# adiciona em todas as linhas
+df$followers <- followers_count
+
+# =========================
+# 5. LIMPEZA
 # =========================
 
 df <- df %>%
@@ -81,11 +111,17 @@ df <- df %>%
     caption = gsub("\n", " ", caption),
     caption = gsub("\r", " ", caption),
     caption = gsub("\"", "'", caption),
-    timestamp = as.POSIXct(timestamp, format = "%Y-%m-%dT%H:%M:%S", tz = "UTC")
+    timestamp = as.POSIXct(timestamp, format = "%Y-%m-%dT%H:%M:%S", tz = "UTC"),
+    like_count = as.numeric(like_count),
+    comments_count = as.numeric(comments_count),
+    reach = as.numeric(reach),
+    impressions = as.numeric(impressions),
+    saved = as.numeric(saved),
+    followers = as.numeric(followers)
   )
 
 # =========================
-# EXPORT
+# 6. EXPORT
 # =========================
 
 write.table(
