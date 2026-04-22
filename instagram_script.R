@@ -36,7 +36,7 @@ df <- do.call(rbind, all_data)
 df <- as.data.frame(df)
 
 # =========================
-# GET INSIGHTS POR POST
+# INSIGHTS
 # =========================
 df$reach <- NA
 df$impressions <- NA
@@ -54,6 +54,9 @@ for (i in 1:nrow(df)) {
   )
 
   res <- GET(insights_url)
+
+  if (status_code(res) != 200) next
+
   json <- fromJSON(content(res, "text", encoding = "UTF-8"), flatten = TRUE)
 
   if (!is.null(json$data)) {
@@ -61,7 +64,10 @@ for (i in 1:nrow(df)) {
     for (j in 1:length(json$data$name)) {
 
       metric_name <- json$data$name[j]
-      value <- json$data$values[[j]]$value[1]
+
+      value <- tryCatch({
+        json$data$values[[j]]$value[1]
+      }, error = function(e) NA)
 
       if (metric_name == "reach") df$reach[i] <- value
       if (metric_name == "impressions") df$impressions[i] <- value
@@ -73,8 +79,10 @@ for (i in 1:nrow(df)) {
 }
 
 # =========================
-# GET FOLLOWERS (FORMA ROBUSTA)
+# FOLLOWERS (SAFE)
 # =========================
+followers <- NA
+
 followers_url <- paste0(
   "https://graph.facebook.com/v19.0/me",
   "?fields=accounts{instagram_business_account{followers_count}}",
@@ -82,17 +90,30 @@ followers_url <- paste0(
 )
 
 res <- GET(followers_url)
-json <- fromJSON(content(res, "text", encoding = "UTF-8"), flatten = TRUE)
 
-followers <- NA
+if (status_code(res) == 200) {
 
-if (!is.null(json$accounts$data)) {
-  for (i in 1:length(json$accounts$data)) {
-    if (!is.null(json$accounts$data[[i]]$instagram_business_account$followers_count)) {
-      followers <- json$accounts$data[[i]]$instagram_business_account$followers_count
-      break
+  json <- fromJSON(content(res, "text", encoding = "UTF-8"), flatten = TRUE)
+
+  tryCatch({
+
+    accounts <- json$accounts$data
+
+    if (!is.null(accounts)) {
+
+      for (i in 1:nrow(accounts)) {
+
+        if (!is.null(accounts$instagram_business_account.followers_count[i])) {
+
+          followers <- accounts$instagram_business_account.followers_count[i]
+          break
+        }
+      }
     }
-  }
+
+  }, error = function(e) {
+    cat("Erro ao pegar followers\n")
+  })
 }
 
 df$followers <- followers
