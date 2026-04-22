@@ -1,140 +1,151 @@
 library(httr)
 library(jsonlite)
+library(dplyr)
 
+# ==============================
+# 🔐 CONFIG
+# ==============================
 access_token <- Sys.getenv("ACCESS_TOKEN")
+ig_user_id <- Sys.getenv("IG_USER_ID")
 
-ig_user_id <- "17841405094259143"
-
-# =========================
-# GET POSTS
-# =========================
-url <- paste0(
-  "https://graph.facebook.com/v19.0/",
-  ig_user_id,
-  "?fields=media.limit(100){id,caption,media_type,media_url,timestamp,like_count,comments_count}",
-  "&access_token=", access_token
-)
-
-all_data <- list()
-next_url <- url
-
-while (!is.null(next_url)) {
+# ==============================
+# 📥 FUNÇÃO: PEGAR POSTS
+# ==============================
+get_posts <- function() {
+  url <- paste0(
+    "https://graph.facebook.com/v25.0/",
+    ig_user_id,
+    "/media?fields=id,caption,media_type,media_url,timestamp,like_count,comments_count&limit=50&access_token=",
+    access_token
+  )
   
-  res <- GET(next_url)
-  json <- fromJSON(content(res, "text", encoding = "UTF-8"), flatten = TRUE)
-
-  data_page <- json$media$data
-
-  if (is.null(data_page)) break
-
-  all_data <- append(all_data, list(data_page))
-
-  next_url <- json$media$paging$`next`
+  res <- fromJSON(url)
+  
+  return(res$data)
 }
 
-df <- do.call(rbind, all_data)
-df <- as.data.frame(df)
-
-# =========================
-# INSIGHTS
-# =========================
-df$reach <- NA
-df$impressions <- NA
-df$saved <- NA
-
-for (i in 1:nrow(df)) {
-
-  media_id <- df$id[i]
-
-  insights_url <- paste0(
-    "https://graph.facebook.com/v19.0/",
+# ==============================
+# 📊 FUNÇÃO: INSIGHTS POR POST
+# ==============================
+get_insights <- function(media_id) {
+  
+  url <- paste0(
+    "https://graph.facebook.com/v25.0/",
     media_id,
-    "/insights?metric=reach,impressions,saved",
-    "&access_token=", access_token
+    "/insights?metric=reach,impressions,saved&access_token=",
+    access_token
+  )
+  
+  res <- tryCatch({
+    fromJSON(url)
+  }, error = function(e) return(NULL))
+  
+  # ⚠️ tratamento de erro
+  if (is.null(res) || !is.null(res$error) || is.null(res$data)) {
+    return(data.frame(
+      reach = NA,
+      impressions = NA,
+      saved = NA
+    ))
+  }
+  
+  metrics <- setNames(
+    sapply(res$data, function(x) x$values[[1]]$value),
+    sapply(res$data, function(x) x$name)
+  )
+  
+  return(data.frame(
+    reach = metrics["reach"],
+    impressions = metrics["impressions"],
+    saved = metrics["saved"]
+  ))
+}
+
+# ==============================
+# 👥 FUNÇÃO: FOLLOWERS
+# ==============================
+get_followers <- function() {
+  
+  url <- paste0(
+    "https://graph.facebook.com/v25.0/me?fields=accounts{instagram_business_account{followers_count}}&access_token=",
+    access_token
+  )
+  
+  res <- fromJSON(url)
+  
+  followers <- res$accounts$data[[1]]$instagram_business_account$followers_count
+  
+  return(followers)
+}
+
+# ==============================
+# 🚀 PIPELINE
+# ==============================
+
+cat("🔄 Buscando posts...\n")
+posts <- get_posts()
+
+df <- posts %>%
+  select(
+    id,
+    caption,
+    media_type,
+    media_url,
+    timestamp,
+    like_count,
+    comments_count
   )
 
-  res <- GET(insights_url)
+# ==============================
+# 📊 ENRIQUECER COM INSIGHTS
+# ==============================
 
-  if (status_code(res) != 200) next
+cat("📊 Coletando insights...\n")
 
-  json <- fromJSON(content(res, "text", encoding = "UTF-8"), flatten = TRUE)
+insights_list <- list()
 
-  if (!is.null(json$data)) {
-
-    for (j in 1:length(json$data$name)) {
-
-      metric_name <- json$data$name[j]
-
-      value <- tryCatch({
-        json$data$values[[j]]$value[1]
-      }, error = function(e) NA)
-
-      if (metric_name == "reach") df$reach[i] <- value
-      if (metric_name == "impressions") df$impressions[i] <- value
-      if (metric_name == "saved") df$saved[i] <- value
-    }
-  }
-
-  Sys.sleep(0.3)
+for (i in 1:nrow(df)) {
+  
+  cat("Post:", i, "de", nrow(df), "\n")
+  
+  insights <- get_insights(df$id[i])
+  
+  insights_list[[i]] <- insights
+  
+  Sys.sleep(1) # 🐢 evita bloqueio da API
 }
 
-# =========================
-# FOLLOWERS (SAFE)
-# =========================
-followers <- NA
+insights_df <- bind_rows(insights_list)
 
-followers_url <- paste0(
-  "https://graph.facebook.com/v19.0/me",
-  "?fields=accounts{instagram_business_account{followers_count}}",
-  "&access_token=", access_token
-)
+df <- bind_cols(df, insights_df)
 
-res <- GET(followers_url)
+# ==============================
+# 👥 ADICIONAR FOLLOWERS
+# ==============================
 
-if (status_code(res) == 200) {
+cat("👥 Buscando followers...\n")
 
-  json <- fromJSON(content(res, "text", encoding = "UTF-8"), flatten = TRUE)
-
-  tryCatch({
-
-    accounts <- json$accounts$data
-
-    if (!is.null(accounts)) {
-
-      for (i in 1:nrow(accounts)) {
-
-        if (!is.null(accounts$instagram_business_account.followers_count[i])) {
-
-          followers <- accounts$instagram_business_account.followers_count[i]
-          break
-        }
-      }
-    }
-
-  }, error = function(e) {
-    cat("Erro ao pegar followers\n")
-  })
-}
+followers <- get_followers()
 
 df$followers <- followers
 
-# =========================
-# LIMPEZA
-# =========================
-df$caption <- ifelse(is.na(df$caption), "", df$caption)
-df$caption <- gsub("\n", " ", df$caption)
-df$caption <- gsub("\r", " ", df$caption)
-df$caption <- gsub("\"", "'", df$caption)
+# ==============================
+# 🧹 LIMPEZA FINAL
+# ==============================
 
-# =========================
-# EXPORT
-# =========================
-write.csv(
-  df,
-  "instagram_posts.csv",
-  row.names = FALSE,
-  fileEncoding = "UTF-8",
-  quote = TRUE
-)
+df <- df %>%
+  mutate(
+    reach = as.numeric(reach),
+    impressions = as.numeric(impressions),
+    saved = as.numeric(saved)
+  )
 
-cat("Finalizado com sucesso!\n")
+# ==============================
+# 💾 EXPORTAR CSV
+# ==============================
+
+cat("💾 Salvando CSV...\n")
+
+write.csv(df, "instagram_posts.csv", row.names = FALSE)
+
+cat("✅ FINALIZADO!\n")
