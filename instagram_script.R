@@ -1,110 +1,105 @@
 library(httr)
 library(jsonlite)
-library(dplyr)
 
 access_token <- Sys.getenv("ACCESS_TOKEN")
+
 ig_user_id <- "17841405094259143"
 
-base_url <- paste0(
-  "https://graph.facebook.com/v25.0/",
+# =========================
+# GET POSTS
+# =========================
+url <- paste0(
+  "https://graph.facebook.com/v19.0/",
   ig_user_id,
-  "/media?fields=id,caption,media_type,media_url,timestamp,like_count,comments_count&limit=100&access_token=",
-  access_token
+  "?fields=media.limit(100){id,caption,media_type,media_url,timestamp,like_count,comments_count}",
+  "&access_token=", access_token
 )
 
-all_posts <- list()
-next_url <- base_url
+all_data <- list()
+next_url <- url
 
 while (!is.null(next_url)) {
-
+  
   res <- GET(next_url)
+  json <- fromJSON(content(res, "text", encoding = "UTF-8"), flatten = TRUE)
 
-  if (status_code(res) != 200) break
+  data_page <- json$media$data
 
-  txt <- content(res, "text", encoding = "UTF-8")
+  if (is.null(data_page)) break
 
-  json <- tryCatch(fromJSON(txt, flatten = TRUE), error = function(e) NULL)
+  all_data <- append(all_data, list(data_page))
 
-  if (is.null(json) || is.null(json$data)) break
-
-  all_posts <- append(all_posts, list(json$data))
-
-  next_url <- json$paging$`next`
+  next_url <- json$media$paging$`next`
 }
 
-df <- bind_rows(all_posts)
+df <- do.call(rbind, all_data)
+df <- as.data.frame(df)
 
 # =========================
-# FUNÇÃO INSIGHTS SEGURA
+# GET INSIGHTS POR POST
 # =========================
+df$reach <- NA
+df$impressions <- NA
+df$saved <- NA
 
-get_insights <- function(media_id, token) {
+for (i in 1:nrow(df)) {
 
-  url <- paste0(
-    "https://graph.facebook.com/v25.0/",
+  media_id <- df$id[i]
+
+  insights_url <- paste0(
+    "https://graph.facebook.com/v19.0/",
     media_id,
-    "/insights?metric=reach,impressions,saved&access_token=",
-    token
+    "/insights?metric=reach,impressions,saved",
+    "&access_token=", access_token
   )
 
-  res <- GET(url)
+  res <- GET(insights_url)
+  json <- fromJSON(content(res, "text", encoding = "UTF-8"), flatten = TRUE)
 
-  if (status_code(res) != 200) {
-    return(data.frame(reach=NA, impressions=NA, saved=NA))
-  }
+  if (!is.null(json$data)) {
 
-  txt <- content(res, "text", encoding = "UTF-8")
+    for (j in 1:length(json$data$name)) {
 
-  json <- tryCatch(fromJSON(txt), error = function(e) NULL)
+      metric_name <- json$data$name[j]
+      value <- json$data$values[[j]]$value[1]
 
-  if (is.null(json) || is.null(json$data)) {
-    return(data.frame(reach=NA, impressions=NA, saved=NA))
-  }
-
-  reach <- NA
-  impressions <- NA
-  saved <- NA
-
-  for (i in seq_along(json$data)) {
-    m <- json$data[[i]]
-
-    if (!is.null(m$name) && m$name == "reach") {
-      reach <- m$values[[1]]$value
-    }
-
-    if (!is.null(m$name) && m$name == "impressions") {
-      impressions <- m$values[[1]]$value
-    }
-
-    if (!is.null(m$name) && m$name == "saved") {
-      saved <- m$values[[1]]$value
+      if (metric_name == "reach") df$reach[i] <- value
+      if (metric_name == "impressions") df$impressions[i] <- value
+      if (metric_name == "saved") df$saved[i] <- value
     }
   }
 
-  return(data.frame(
-    reach = reach,
-    impressions = impressions,
-    saved = saved
-  ))
+  Sys.sleep(0.3)
 }
 
 # =========================
-# LOOP SEGURO
+# GET FOLLOWERS (FORMA ROBUSTA)
 # =========================
+followers_url <- paste0(
+  "https://graph.facebook.com/v19.0/me",
+  "?fields=accounts{instagram_business_account{followers_count}}",
+  "&access_token=", access_token
+)
 
-insights_list <- lapply(df$id, function(id) {
-  tryCatch(get_insights(id, access_token),
-           error = function(e) data.frame(reach=NA, impressions=NA, saved=NA))
-})
+res <- GET(followers_url)
+json <- fromJSON(content(res, "text", encoding = "UTF-8"), flatten = TRUE)
 
-insights_df <- bind_rows(insights_list)
+followers <- NA
 
-df <- bind_cols(df, insights_df)
+if (!is.null(json$accounts$data)) {
+  for (i in 1:length(json$accounts$data)) {
+    if (!is.null(json$accounts$data[[i]]$instagram_business_account$followers_count)) {
+      followers <- json$accounts$data[[i]]$instagram_business_account$followers_count
+      break
+    }
+  }
+}
+
+df$followers <- followers
 
 # =========================
 # LIMPEZA
 # =========================
-
 df$caption <- ifelse(is.na(df$caption), "", df$caption)
 df$caption <- gsub("\n", " ", df$caption)
 df$caption <- gsub("\r", " ", df$caption)
@@ -113,13 +108,12 @@ df$caption <- gsub("\"", "'", df$caption)
 # =========================
 # EXPORT
 # =========================
-
-write.table(
+write.csv(
   df,
   "instagram_posts.csv",
-  sep = ";",
   row.names = FALSE,
-  fileEncoding = "UTF-8"
+  fileEncoding = "UTF-8",
+  quote = TRUE
 )
 
 cat("Finalizado com sucesso!\n")
