@@ -61,14 +61,14 @@ get_all_pages <- function(url) {
 }
 
 # ================================
-# BUSCAR POSTS
+# BUSCAR POSTS (COMPLETO)
 # ================================
 cat("📡 Buscando mídia...\n")
 
 url_media <- paste0(
   BASE_URL,
   IG_USER_ID,
-  "/media?fields=id,caption,like_count,comments_count,media_type,timestamp&limit=50&access_token=",
+  "/media?fields=id,caption,like_count,comments_count,media_type,timestamp,media_url,permalink,thumbnail_url,username&limit=50&access_token=",
   ACCESS_TOKEN
 )
 
@@ -81,11 +81,27 @@ if (nrow(data_media) == 0) {
 cat("✅ Total de posts:", nrow(data_media), "\n")
 
 # ================================
-# LIMPEZA ROBUSTA DO CAPTION (🔥)
+# GARANTIR COLUNAS (ANTI-QUEBRA BI)
+# ================================
+cols_required <- c(
+  "media_url",
+  "permalink",
+  "thumbnail_url",
+  "username"
+)
+
+for (col in cols_required) {
+  if (!col %in% colnames(data_media)) {
+    data_media[[col]] <- NA
+  }
+}
+
+# ================================
+# LIMPEZA DO CAPTION
 # ================================
 data_media$caption <- data_media$caption %>%
-  str_replace_all("\r\n|\r|\n", " ") %>%   # remove quebra de linha
-  str_squish()                            # remove espaços duplicados
+  str_replace_all("\r\n|\r|\n", " ") %>%
+  str_squish()
 
 # ================================
 # INSIGHTS
@@ -124,7 +140,7 @@ get_insights <- function(post_id) {
 }
 
 # ================================
-# LOOP
+# LOOP INSIGHTS
 # ================================
 cat("🔄 Coletando insights...\n")
 
@@ -164,7 +180,7 @@ df <- bind_cols(data_media, insights_df) %>%
   )
 
 # ================================
-# SALVAR (💥 COMPATÍVEL COM POWER BI)
+# SALVAR (POWER BI SAFE)
 # ================================
 cat("💾 Salvando CSV...\n")
 
