@@ -2,37 +2,63 @@ name: Atualizar Instagram
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "0 */6 * * *" # roda a cada 6 horas (ajusta se quiser)
 
 jobs:
   run-script:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      # 1. Checkout do repositório
+      - name: Checkout repo
         uses: actions/checkout@v4
 
+      # 2. Setup do R (versão estável)
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
-
-      # 👇 ESSA É A MÁGICA (instala pacotes corretamente)
-      - name: Install dependencies
-        uses: r-lib/actions/setup-r-dependencies@v2
         with:
-          packages: |
-            httr
-            jsonlite
-            dplyr
-            readr
+          r-version: '4.3.3'
 
-      # 👇 DEBUG pra garantir
-      - name: Test libraries
+      # 3. Cache de pacotes R (acelera MUITO)
+      - name: Cache R packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/R
+          key: r-packages-${{ runner.os }}-${{ hashFiles('**/*.R') }}
+          restore-keys: |
+            r-packages-${{ runner.os }}-
+
+      # 4. Instalar dependências R (CORRIGIDO)
+      - name: Install R packages
         run: |
-          Rscript -e 'library(httr); library(jsonlite); library(dplyr); library(readr); cat("✅ PACOTES OK\n")'
+          install.packages(c(
+            "httr",
+            "jsonlite",
+            "dplyr",
+            "readr",
+            "lubridate"
+          ), repos="https://cloud.r-project.org")
 
-      # 👇 EXECUÇÃO
-      - name: Run script
+        shell: Rscript {0}
+
+      # 5. Rodar script com variáveis de ambiente
+      - name: Run Instagram Script
         env:
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
+        run: Rscript instagram_script.R
+
+      # 6. Commit automático se houver mudança
+      - name: Commit and push
         run: |
-          Rscript instagram_script.R
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add instagram_posts.csv
+          git commit -m "Atualizando dados automaticamente" || echo "Sem mudanças"
+          git push
+
+      # 7. Debug opcional (se quiser ver saída no log)
+      - name: Debug output
+        run: |
+          echo "Workflow finalizado com sucesso 🚀"
