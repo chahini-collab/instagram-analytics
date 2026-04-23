@@ -25,6 +25,20 @@ suppressPackageStartupMessages({
 
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
+safe_GET <- function(url) {
+  tryCatch({
+    res <- GET(url)
+    if (status_code(res) != 200) {
+      stop(content(res, "text", encoding = "UTF-8"))
+    }
+    return(res)
+  }, error = function(e) {
+    cat("❌ ERRO NA REQUISIÇÃO:", url, "\n")
+    cat(e$message, "\n")
+    return(NULL)
+  })
+}
+
 # ================================
 # BUSCAR POSTS
 # ================================
@@ -37,16 +51,13 @@ url_media <- paste0(
   ACCESS_TOKEN
 )
 
-res_media <- GET(url_media)
-
-if (status_code(res_media) != 200) {
-  stop(paste("❌ Erro API media:", content(res_media, "text", encoding = "UTF-8")))
-}
+res_media <- safe_GET(url_media)
+if (is.null(res_media)) stop("❌ Falha ao buscar mídia")
 
 data_media <- fromJSON(content(res_media, "text", encoding = "UTF-8"), flatten = TRUE)$data
 
 if (is.null(data_media) || nrow(data_media) == 0) {
-  stop("❌ Nenhum post retornado pela API")
+  stop("❌ Nenhum post retornado")
 }
 
 cat("✅ Posts encontrados:", nrow(data_media), "\n")
@@ -55,6 +66,7 @@ cat("✅ Posts encontrados:", nrow(data_media), "\n")
 # FUNÇÃO INSIGHTS
 # ================================
 get_insights <- function(post_id) {
+
   url <- paste0(
     "https://graph.facebook.com/v19.0/",
     post_id,
@@ -62,24 +74,16 @@ get_insights <- function(post_id) {
     ACCESS_TOKEN
   )
 
-  res <- GET(url)
+  res <- safe_GET(url)
 
-  if (status_code(res) != 200) {
-    return(data.frame(
-      reach = NA,
-      impressions = NA,
-      saved = NA
-    ))
+  if (is.null(res)) {
+    return(data.frame(reach=NA, impressions=NA, saved=NA))
   }
 
   data <- fromJSON(content(res, "text", encoding = "UTF-8"), flatten = TRUE)
 
   if (is.null(data$data)) {
-    return(data.frame(
-      reach = NA,
-      impressions = NA,
-      saved = NA
-    ))
+    return(data.frame(reach=NA, impressions=NA, saved=NA))
   }
 
   metrics <- setNames(
@@ -101,6 +105,7 @@ cat("🔄 Coletando insights...\n")
 
 insights_list <- lapply(data_media$id, function(id) {
   cat("➡️ Post:", id, "\n")
+  Sys.sleep(0.2) # evita rate limit
   get_insights(id)
 })
 
@@ -118,11 +123,8 @@ url_followers <- paste0(
   ACCESS_TOKEN
 )
 
-res_followers <- GET(url_followers)
-
-if (status_code(res_followers) != 200) {
-  stop(paste("❌ Erro followers:", content(res_followers, "text", encoding = "UTF-8")))
-}
+res_followers <- safe_GET(url_followers)
+if (is.null(res_followers)) stop("❌ Erro followers")
 
 followers <- fromJSON(content(res_followers, "text", encoding = "UTF-8"))$followers_count
 
