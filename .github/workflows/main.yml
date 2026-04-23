@@ -9,6 +9,9 @@ jobs:
   run-script:
     runs-on: ubuntu-latest
 
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
     steps:
       # 1. Checkout
       - name: Checkout repo
@@ -20,40 +23,26 @@ jobs:
         with:
           r-version: '4.3.3'
 
-      # 3. LIMPAR CACHE DO R (🔥 ESSA É A CHAVE)
-      - name: Clear R cache
-        run: rm -rf ~/.cache/R
-
-      # 4. Instalar pacotes (FORÇADO)
-      - name: Install packages (FORCE)
-        run: |
-          Rscript -e '
-          options(repos = c(CRAN="https://cloud.r-project.org"))
-          install.packages("httr", dependencies=TRUE)
-          install.packages("jsonlite", dependencies=TRUE)
-          install.packages("dplyr", dependencies=TRUE)
-          install.packages("readr", dependencies=TRUE)
-          install.packages("lubridate", dependencies=TRUE)
-          '
-
-      # 5. TESTE REAL (se falhar aqui, você vê na hora)
-      - name: Test packages
-        run: |
-          Rscript -e '
-          library(httr)
-          library(jsonlite)
-          library(dplyr)
-          cat("PACOTES OK\n")
-          '
-
-      # 6. Rodar script
-      - name: Run script
+      # 3. Install + Run (MESMO PROCESSO 🔥)
+      - name: Install packages and run script
         env:
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
-        run: Rscript instagram_script.R
+        run: |
+          Rscript -e '
+          options(repos = c(CRAN="https://cloud.r-project.org"))
 
-      # 7. Commit
+          install.packages(c(
+            "httr",
+            "jsonlite",
+            "dplyr",
+            "readr"
+          ), dependencies=TRUE)
+
+          source("instagram_script.R")
+          '
+
+      # 4. Commit
       - name: Commit and push
         run: |
           git config user.name "github-actions"
