@@ -19,7 +19,6 @@ suppressPackageStartupMessages({
   library(httr)
   library(jsonlite)
   library(dplyr)
-  library(readr)
   library(stringr)
 })
 
@@ -82,11 +81,11 @@ if (nrow(data_media) == 0) {
 cat("✅ Total de posts:", nrow(data_media), "\n")
 
 # ================================
-# LIMPEZA CRÍTICA DO CAPTION (🔥)
+# LIMPEZA ROBUSTA DO CAPTION (🔥)
 # ================================
 data_media$caption <- data_media$caption %>%
   str_replace_all("\r\n|\r|\n", " ") %>%   # remove quebra de linha
-  str_replace_all(",", " ")               # remove vírgula (evita quebrar CSV)
+  str_squish()                            # remove espaços duplicados
 
 # ================================
 # INSIGHTS
@@ -161,14 +160,19 @@ df <- bind_cols(data_media, insights_df) %>%
   distinct(id, .keep_all = TRUE) %>%
   mutate(
     followers = followers,
-    timestamp = as.POSIXct(timestamp)
+    timestamp = as.POSIXct(timestamp, tz = "UTC")
   )
 
 # ================================
-# SALVAR (BLINDADO)
+# SALVAR (💥 COMPATÍVEL COM POWER BI)
 # ================================
 cat("💾 Salvando CSV...\n")
 
-write_csv(df, "instagram_posts.csv", na = "")
+write.csv2(
+  df,
+  "instagram_posts.csv",
+  row.names = FALSE,
+  fileEncoding = "UTF-8"
+)
 
 cat("✅ FINALIZADO COM SUCESSO\n")
