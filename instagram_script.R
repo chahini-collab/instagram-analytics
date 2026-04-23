@@ -1,17 +1,16 @@
 # ================================
-# DEBUG INICIAL
+# CONFIG
 # ================================
 cat("🚀 INICIANDO SCRIPT\n")
 
 ACCESS_TOKEN <- Sys.getenv("ACCESS_TOKEN")
 IG_USER_ID   <- Sys.getenv("IG_USER_ID")
 
-cat("🔍 TOKEN:", ifelse(ACCESS_TOKEN == "", "VAZIO ❌", "OK ✅"), "\n")
-cat("🔍 USER_ID:", IG_USER_ID, "\n")
-
 if (ACCESS_TOKEN == "" || IG_USER_ID == "") {
   stop("❌ ERRO: ACCESS_TOKEN ou IG_USER_ID não definidos")
 }
+
+BASE_URL <- "https://graph.facebook.com/v25.0/"
 
 # ================================
 # LIBS
@@ -25,6 +24,9 @@ suppressPackageStartupMessages({
 
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
+# ================================
+# SAFE GET
+# ================================
 safe_GET <- function(url) {
   tryCatch({
     res <- GET(url)
@@ -33,42 +35,58 @@ safe_GET <- function(url) {
     }
     return(res)
   }, error = function(e) {
-    cat("❌ ERRO NA REQUISIÇÃO:", url, "\n")
+    cat("❌ ERRO:", url, "\n")
     cat(e$message, "\n")
     return(NULL)
   })
 }
 
 # ================================
-# BUSCAR POSTS
+# PAGINAÇÃO (🔥 ESSENCIAL)
+# ================================
+get_all_pages <- function(url) {
+  results <- list()
+
+  while (!is.null(url)) {
+    res <- safe_GET(url)
+    if (is.null(res)) break
+
+    json <- fromJSON(content(res, "text", encoding = "UTF-8"), flatten = TRUE)
+
+    results[[length(results)+1]] <- json$data
+    url <- json$paging$`next` %||% NULL
+  }
+
+  bind_rows(results)
+}
+
+# ================================
+# BUSCAR POSTS (COM PAGINAÇÃO)
 # ================================
 cat("📡 Buscando mídia...\n")
 
 url_media <- paste0(
-  "https://graph.facebook.com/v19.0/",
+  BASE_URL,
   IG_USER_ID,
   "/media?fields=id,caption,like_count,comments_count,media_type,timestamp&limit=50&access_token=",
   ACCESS_TOKEN
 )
 
-res_media <- safe_GET(url_media)
-if (is.null(res_media)) stop("❌ Falha ao buscar mídia")
+data_media <- get_all_pages(url_media)
 
-data_media <- fromJSON(content(res_media, "text", encoding = "UTF-8"), flatten = TRUE)$data
-
-if (is.null(data_media) || nrow(data_media) == 0) {
-  stop("❌ Nenhum post retornado")
+if (nrow(data_media) == 0) {
+  stop("❌ Nenhum post encontrado")
 }
 
-cat("✅ Posts encontrados:", nrow(data_media), "\n")
+cat("✅ Total de posts:", nrow(data_media), "\n")
 
 # ================================
-# FUNÇÃO INSIGHTS
+# INSIGHTS POR POST
 # ================================
 get_insights <- function(post_id) {
 
   url <- paste0(
-    "https://graph.facebook.com/v19.0/",
+    BASE_URL,
     post_id,
     "/insights?metric=reach,impressions,saved&access_token=",
     ACCESS_TOKEN
@@ -99,13 +117,13 @@ get_insights <- function(post_id) {
 }
 
 # ================================
-# LOOP POSTS
+# LOOP INSIGHTS
 # ================================
 cat("🔄 Coletando insights...\n")
 
 insights_list <- lapply(data_media$id, function(id) {
   cat("➡️ Post:", id, "\n")
-  Sys.sleep(0.2) # evita rate limit
+  Sys.sleep(0.15)
   get_insights(id)
 })
 
@@ -117,7 +135,7 @@ insights_df <- bind_rows(insights_list)
 cat("👥 Buscando followers...\n")
 
 url_followers <- paste0(
-  "https://graph.facebook.com/v19.0/",
+  BASE_URL,
   IG_USER_ID,
   "?fields=followers_count&access_token=",
   ACCESS_TOKEN
@@ -128,16 +146,17 @@ if (is.null(res_followers)) stop("❌ Erro followers")
 
 followers <- fromJSON(content(res_followers, "text", encoding = "UTF-8"))$followers_count
 
-cat("✅ Followers:", followers, "\n")
-
 # ================================
 # DATA FINAL
 # ================================
 df <- bind_cols(data_media, insights_df) %>%
-  mutate(followers = followers)
+  mutate(
+    followers = followers,
+    timestamp = as.POSIXct(timestamp)
+  )
 
 # ================================
-# SALVAR CSV
+# SALVAR
 # ================================
 cat("💾 Salvando CSV...\n")
 
