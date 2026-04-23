@@ -3,53 +3,47 @@ name: Atualizar Instagram
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 */6 * * *" # roda a cada 6 horas (ajusta se quiser)
+    - cron: "0 */6 * * *"
 
 jobs:
   run-script:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout do repositório
+      # 1. Checkout
       - name: Checkout repo
         uses: actions/checkout@v4
 
-      # 2. Setup do R (versão estável)
+      # 2. Setup R
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
         with:
           r-version: '4.3.3'
 
-      # 3. Cache de pacotes R (acelera MUITO)
-      - name: Cache R packages
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/R
-          key: r-packages-${{ runner.os }}-${{ hashFiles('**/*.R') }}
-          restore-keys: |
-            r-packages-${{ runner.os }}-
-
-      # 4. Instalar dependências R (CORRIGIDO)
-      - name: Install R packages
+      # 3. Instalar pacotes R (FORMA CORRETA)
+      - name: Install packages
         run: |
-          install.packages(c(
+          Rscript -e 'install.packages(c(
             "httr",
             "jsonlite",
             "dplyr",
             "readr",
             "lubridate"
-          ), repos="https://cloud.r-project.org")
+          ), repos="https://cloud.r-project.org")'
 
-        shell: Rscript {0}
+      # 4. Verificação (DEBUG CRÍTICO)
+      - name: Check packages
+        run: |
+          Rscript -e 'library(httr); library(jsonlite); cat("Pacotes OK\n")'
 
-      # 5. Rodar script com variáveis de ambiente
-      - name: Run Instagram Script
+      # 5. Rodar script
+      - name: Run script
         env:
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
         run: Rscript instagram_script.R
 
-      # 6. Commit automático se houver mudança
+      # 6. Commit automático
       - name: Commit and push
         run: |
           git config user.name "github-actions"
@@ -57,8 +51,3 @@ jobs:
           git add instagram_posts.csv
           git commit -m "Atualizando dados automaticamente" || echo "Sem mudanças"
           git push
-
-      # 7. Debug opcional (se quiser ver saída no log)
-      - name: Debug output
-        run: |
-          echo "Workflow finalizado com sucesso 🚀"
