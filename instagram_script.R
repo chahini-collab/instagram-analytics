@@ -61,7 +61,7 @@ get_all_pages <- function(url) {
 }
 
 # ================================
-# BUSCAR POSTS (COMPLETO)
+# BUSCAR POSTS
 # ================================
 cat("📡 Buscando mídia...\n")
 
@@ -78,29 +78,28 @@ if (nrow(data_media) == 0) {
   stop("❌ Nenhum post encontrado")
 }
 
-cat("✅ Total de posts:", nrow(data_media), "\n")
-
 # ================================
-# GARANTIR COLUNAS (ANTI-QUEBRA BI)
+# GARANTIR TODAS AS COLUNAS
 # ================================
-cols_required <- c(
-  "media_url",
-  "permalink",
-  "thumbnail_url",
-  "username"
+required_cols <- c(
+  "id","caption","like_count","comments_count","media_type","timestamp",
+  "media_url","permalink","thumbnail_url","username"
 )
 
-for (col in cols_required) {
+for (col in required_cols) {
   if (!col %in% colnames(data_media)) {
     data_media[[col]] <- NA
   }
 }
 
 # ================================
-# LIMPEZA DO CAPTION
+# LIMPEZA FORTE DO CAPTION (🔥 REAL)
 # ================================
 data_media$caption <- data_media$caption %>%
-  str_replace_all("\r\n|\r|\n", " ") %>%
+  str_replace_all("[\r\n]+", " ") %>%     # quebra linha
+  str_replace_all('"', "'") %>%          # aspas
+  str_replace_all(";", " ") %>%          # ponto e vírgula
+  str_replace_all(",", " ") %>%          # vírgula
   str_squish()
 
 # ================================
@@ -132,31 +131,26 @@ get_insights <- function(post_id) {
     data$data$name
   )
 
-  return(data.frame(
+  data.frame(
     reach = metrics$reach %||% NA,
     impressions = metrics$impressions %||% NA,
     saved = metrics$saved %||% NA
-  ))
+  )
 }
 
 # ================================
-# LOOP INSIGHTS
+# LOOP
 # ================================
 cat("🔄 Coletando insights...\n")
 
-insights_list <- lapply(data_media$id, function(id) {
-  cat("➡️ Post:", id, "\n")
+insights_df <- bind_rows(lapply(data_media$id, function(id) {
   Sys.sleep(0.15)
   get_insights(id)
-})
-
-insights_df <- bind_rows(insights_list)
+}))
 
 # ================================
 # FOLLOWERS
 # ================================
-cat("👥 Buscando followers...\n")
-
 url_followers <- paste0(
   BASE_URL,
   IG_USER_ID,
@@ -164,31 +158,33 @@ url_followers <- paste0(
   ACCESS_TOKEN
 )
 
-res_followers <- safe_GET(url_followers)
-if (is.null(res_followers)) stop("❌ Erro followers")
-
-followers <- fromJSON(content(res_followers, "text", encoding = "UTF-8"))$followers_count
+followers <- fromJSON(content(safe_GET(url_followers), "text"))$followers_count
 
 # ================================
-# DATA FINAL
+# DATA FINAL (ORDEM FIXA 🔥)
 # ================================
 df <- bind_cols(data_media, insights_df) %>%
-  distinct(id, .keep_all = TRUE) %>%
   mutate(
     followers = followers,
     timestamp = as.POSIXct(timestamp, tz = "UTC")
+  ) %>%
+  select(
+    id, caption, like_count, comments_count, media_type, timestamp,
+    media_url, permalink, username, thumbnail_url,
+    reach, impressions, saved, followers
   )
 
 # ================================
-# SALVAR (POWER BI SAFE)
+# SALVAR (PADRÃO POWER BI)
 # ================================
 cat("💾 Salvando CSV...\n")
 
-write.csv2(
+write.csv(
   df,
   "instagram_posts.csv",
   row.names = FALSE,
-  fileEncoding = "UTF-8"
+  fileEncoding = "UTF-8",
+  na = ""
 )
 
 cat("✅ FINALIZADO COM SUCESSO\n")
