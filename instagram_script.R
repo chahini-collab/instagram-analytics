@@ -20,6 +20,7 @@ suppressPackageStartupMessages({
   library(jsonlite)
   library(dplyr)
   library(readr)
+  library(stringr)
 })
 
 `%||%` <- function(a, b) if (!is.null(a)) a else b
@@ -42,7 +43,7 @@ safe_GET <- function(url) {
 }
 
 # ================================
-# PAGINAÇÃO (🔥 ESSENCIAL)
+# PAGINAÇÃO
 # ================================
 get_all_pages <- function(url) {
   results <- list()
@@ -61,7 +62,7 @@ get_all_pages <- function(url) {
 }
 
 # ================================
-# BUSCAR POSTS (COM PAGINAÇÃO)
+# BUSCAR POSTS
 # ================================
 cat("📡 Buscando mídia...\n")
 
@@ -81,7 +82,14 @@ if (nrow(data_media) == 0) {
 cat("✅ Total de posts:", nrow(data_media), "\n")
 
 # ================================
-# INSIGHTS POR POST
+# LIMPEZA CRÍTICA DO CAPTION (🔥)
+# ================================
+data_media$caption <- data_media$caption %>%
+  str_replace_all("\r\n|\r|\n", " ") %>%   # remove quebra de linha
+  str_replace_all(",", " ")               # remove vírgula (evita quebrar CSV)
+
+# ================================
+# INSIGHTS
 # ================================
 get_insights <- function(post_id) {
 
@@ -117,7 +125,7 @@ get_insights <- function(post_id) {
 }
 
 # ================================
-# LOOP INSIGHTS
+# LOOP
 # ================================
 cat("🔄 Coletando insights...\n")
 
@@ -150,16 +158,17 @@ followers <- fromJSON(content(res_followers, "text", encoding = "UTF-8"))$follow
 # DATA FINAL
 # ================================
 df <- bind_cols(data_media, insights_df) %>%
+  distinct(id, .keep_all = TRUE) %>%
   mutate(
     followers = followers,
     timestamp = as.POSIXct(timestamp)
   )
 
 # ================================
-# SALVAR
+# SALVAR (BLINDADO)
 # ================================
 cat("💾 Salvando CSV...\n")
 
-write_csv(df, "instagram_posts.csv")
+write_csv(df, "instagram_posts.csv", na = "")
 
 cat("✅ FINALIZADO COM SUCESSO\n")
