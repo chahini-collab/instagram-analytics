@@ -20,30 +20,40 @@ jobs:
         with:
           r-version: '4.3.3'
 
-      # 3. Instalar pacotes R (FORMA CORRETA)
-      - name: Install packages
-        run: |
-          Rscript -e 'install.packages(c(
-            "httr",
-            "jsonlite",
-            "dplyr",
-            "readr",
-            "lubridate"
-          ), repos="https://cloud.r-project.org")'
+      # 3. LIMPAR CACHE DO R (🔥 ESSA É A CHAVE)
+      - name: Clear R cache
+        run: rm -rf ~/.cache/R
 
-      # 4. Verificação (DEBUG CRÍTICO)
-      - name: Check packages
+      # 4. Instalar pacotes (FORÇADO)
+      - name: Install packages (FORCE)
         run: |
-          Rscript -e 'library(httr); library(jsonlite); cat("Pacotes OK\n")'
+          Rscript -e '
+          options(repos = c(CRAN="https://cloud.r-project.org"))
+          install.packages("httr", dependencies=TRUE)
+          install.packages("jsonlite", dependencies=TRUE)
+          install.packages("dplyr", dependencies=TRUE)
+          install.packages("readr", dependencies=TRUE)
+          install.packages("lubridate", dependencies=TRUE)
+          '
 
-      # 5. Rodar script
+      # 5. TESTE REAL (se falhar aqui, você vê na hora)
+      - name: Test packages
+        run: |
+          Rscript -e '
+          library(httr)
+          library(jsonlite)
+          library(dplyr)
+          cat("PACOTES OK\n")
+          '
+
+      # 6. Rodar script
       - name: Run script
         env:
           ACCESS_TOKEN: ${{ secrets.ACCESS_TOKEN }}
           IG_USER_ID: ${{ secrets.IG_USER_ID }}
         run: Rscript instagram_script.R
 
-      # 6. Commit automático
+      # 7. Commit
       - name: Commit and push
         run: |
           git config user.name "github-actions"
