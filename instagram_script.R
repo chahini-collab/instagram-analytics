@@ -1,4 +1,16 @@
 # ================================
+# INSTALL AUTOMÁTICO (🔥 ESSENCIAL)
+# ================================
+required_packages <- c("httr", "jsonlite", "dplyr", "stringr")
+
+for (pkg in required_packages) {
+  if (!require(pkg, character.only = TRUE)) {
+    install.packages(pkg, repos = "https://cloud.r-project.org")
+    library(pkg, character.only = TRUE)
+  }
+}
+
+# ================================
 # CONFIG
 # ================================
 cat("🚀 INICIANDO SCRIPT\n")
@@ -12,16 +24,6 @@ if (ACCESS_TOKEN == "" || IG_USER_ID == "") {
 
 BASE_URL <- "https://graph.facebook.com/v25.0/"
 
-# ================================
-# LIBS
-# ================================
-suppressPackageStartupMessages({
-  library(httr)
-  library(jsonlite)
-  library(dplyr)
-  library(stringr)
-})
-
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
 # ================================
@@ -29,10 +31,12 @@ suppressPackageStartupMessages({
 # ================================
 safe_GET <- function(url) {
   tryCatch({
-    res <- GET(url)
-    if (status_code(res) != 200) {
-      stop(content(res, "text", encoding = "UTF-8"))
+    res <- httr::GET(url)
+
+    if (httr::status_code(res) != 200) {
+      stop(httr::content(res, "text", encoding = "UTF-8"))
     }
+
     return(res)
   }, error = function(e) {
     cat("❌ ERRO:", url, "\n")
@@ -51,13 +55,15 @@ get_all_pages <- function(url) {
     res <- safe_GET(url)
     if (is.null(res)) break
 
-    json <- fromJSON(content(res, "text", encoding = "UTF-8"), flatten = TRUE)
+    json <- jsonlite::fromJSON(httr::content(res, "text", encoding = "UTF-8"), flatten = TRUE)
+
+    if (is.null(json$data)) break
 
     results[[length(results)+1]] <- json$data
     url <- json$paging$`next` %||% NULL
   }
 
-  bind_rows(results)
+  dplyr::bind_rows(results)
 }
 
 # ================================
@@ -74,12 +80,12 @@ url_media <- paste0(
 
 data_media <- get_all_pages(url_media)
 
-if (nrow(data_media) == 0) {
+if (is.null(data_media) || nrow(data_media) == 0) {
   stop("❌ Nenhum post encontrado")
 }
 
 # ================================
-# GARANTIR TODAS AS COLUNAS
+# GARANTIR COLUNAS
 # ================================
 required_cols <- c(
   "id","caption","like_count","comments_count","media_type","timestamp",
@@ -93,14 +99,14 @@ for (col in required_cols) {
 }
 
 # ================================
-# LIMPEZA FORTE DO CAPTION (🔥 REAL)
+# LIMPEZA CAPTION
 # ================================
 data_media$caption <- data_media$caption %>%
-  str_replace_all("[\r\n]+", " ") %>%     # quebra linha
-  str_replace_all('"', "'") %>%          # aspas
-  str_replace_all(";", " ") %>%          # ponto e vírgula
-  str_replace_all(",", " ") %>%          # vírgula
-  str_squish()
+  stringr::str_replace_all("[\r\n]+", " ") %>%
+  stringr::str_replace_all('"', "'") %>%
+  stringr::str_replace_all(";", " ") %>%
+  stringr::str_replace_all(",", " ") %>%
+  stringr::str_squish()
 
 # ================================
 # INSIGHTS
@@ -120,7 +126,7 @@ get_insights <- function(post_id) {
     return(data.frame(reach=NA, impressions=NA, saved=NA))
   }
 
-  data <- fromJSON(content(res, "text", encoding = "UTF-8"), flatten = TRUE)
+  data <- jsonlite::fromJSON(httr::content(res, "text", encoding = "UTF-8"), flatten = TRUE)
 
   if (is.null(data$data)) {
     return(data.frame(reach=NA, impressions=NA, saved=NA))
@@ -139,11 +145,11 @@ get_insights <- function(post_id) {
 }
 
 # ================================
-# LOOP
+# LOOP INSIGHTS
 # ================================
 cat("🔄 Coletando insights...\n")
 
-insights_df <- bind_rows(lapply(data_media$id, function(id) {
+insights_df <- dplyr::bind_rows(lapply(data_media$id, function(id) {
   Sys.sleep(0.15)
   get_insights(id)
 }))
@@ -158,24 +164,31 @@ url_followers <- paste0(
   ACCESS_TOKEN
 )
 
-followers <- fromJSON(content(safe_GET(url_followers), "text"))$followers_count
+res_followers <- safe_GET(url_followers)
+
+followers <- if (!is.null(res_followers)) {
+  jsonlite::fromJSON(httr::content(res_followers, "text", encoding = "UTF-8"))$followers_count
+} else {
+  NA
+}
 
 # ================================
-# DATA FINAL (ORDEM FIXA 🔥)
+# DATA FINAL
 # ================================
-df <- bind_cols(data_media, insights_df) %>%
-  mutate(
+df <- dplyr::bind_cols(data_media, insights_df) %>%
+  dplyr::distinct(id, .keep_all = TRUE) %>%
+  dplyr::mutate(
     followers = followers,
     timestamp = as.POSIXct(timestamp, tz = "UTC")
   ) %>%
-  select(
+  dplyr::select(
     id, caption, like_count, comments_count, media_type, timestamp,
     media_url, permalink, username, thumbnail_url,
     reach, impressions, saved, followers
   )
 
 # ================================
-# SALVAR (PADRÃO POWER BI)
+# SALVAR
 # ================================
 cat("💾 Salvando CSV...\n")
 
